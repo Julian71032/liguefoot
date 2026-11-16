@@ -129,32 +129,76 @@
       box-shadow: 0 0 40px rgba(0, 240, 255, 0.25) !important;
     }
 
-    /* Optional Retro Theme Override when user switches theme */
+    /* Vibrant Colorful 90s Arcade / Teletext Retro Theme */
     body[data-theme="retro"] {
       font-family: 'Chakra Petch', sans-serif;
-      background-color: #08121e;
-      background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.22) 50%);
-      background-size: 100% 4px;
+      background-color: #160c38;
+      background-image:
+        radial-gradient(circle at 12% 18%, rgba(255, 42, 133, 0.22) 0%, transparent 42%),
+        radial-gradient(circle at 88% 22%, rgba(0, 245, 212, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 50% 85%, rgba(255, 214, 10, 0.14) 0%, transparent 50%),
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.24) 50%);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 100% 4px;
+      color: #fff8e7;
     }
-    body[data-theme="retro"] h1, body[data-theme="retro"] .font-pixel {
+    body[data-theme="retro"] h1, body[data-theme="retro"] h2, body[data-theme="retro"] .font-pixel {
       font-family: 'Press Start 2P', monospace;
     }
-    body[data-theme="retro"] .card-glass {
-      background: #0f2133;
-      border: 2px solid #4b7399 !important;
-      clip-path: none;
-      box-shadow: 5px 5px 0px #03070c !important;
+    body[data-theme="retro"] .pl-gradient {
+      background: linear-gradient(90deg, #4c0b7a 0%, #1d399c 50%, #056b5c 100%) !important;
+      border-bottom: 3px solid #ffd60a !important;
+      box-shadow: 0 4px 0 #08041a, 0 0 24px rgba(255, 42, 133, 0.3) !important;
     }
-    body[data-theme="retro"] .card-glass::before { display: none; }
+    body[data-theme="retro"] .card-glass {
+      background: linear-gradient(160deg, #1d2b64 0%, #141944 100%) !important;
+      border: 2px solid #ffd60a !important;
+      clip-path: none;
+      border-radius: 4px !important;
+      box-shadow: 5px 5px 0px #ff2a85, 8px 8px 0px #070418 !important;
+    }
+    body[data-theme="retro"] .card-glass::before {
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, #ff2a85, #ffd60a, #00f5d4);
+      box-shadow: none;
+    }
     body[data-theme="retro"] button {
       font-family: 'Chakra Petch', sans-serif;
       clip-path: none;
-      box-shadow: 3px 3px 0px #03070c;
+      border-radius: 3px !important;
+      box-shadow: 3px 3px 0px #070418;
+    }
+    body[data-theme="retro"] button:hover:not(:disabled) {
+      box-shadow: 3px 3px 0px #ff2a85, 0 0 12px rgba(255, 214, 10, 0.45);
+    }
+    body[data-theme="retro"] .tab-btn {
+      background: #271b5a;
+      border: 2px solid #00f5d4 !important;
+      color: #00f5d4;
     }
     body[data-theme="retro"] .tab-btn-active {
-      background: #ffcc00 !important;
-      color: #07111c !important;
-      border-color: #ffffff !important;
+      background: linear-gradient(90deg, #ffd60a 0%, #ff9f1c 100%) !important;
+      color: #160c38 !important;
+      border: 2px solid #ffffff !important;
+      box-shadow: 3px 3px 0px #ff2a85 !important;
+    }
+    body[data-theme="retro"] .retro-led-box {
+      background: #081808 !important;
+      border: 2px solid #ffd60a !important;
+      color: #39ff14 !important;
+      text-shadow: 0 0 8px rgba(57, 255, 20, 0.85);
+      clip-path: none;
+      border-radius: 3px !important;
+    }
+    body[data-theme="retro"] select, body[data-theme="retro"] input {
+      background-color: #160c38 !important;
+      border: 2px solid #00f5d4 !important;
+      color: #ffd60a !important;
+    }
+    body[data-theme="retro"] thead tr {
+      background: linear-gradient(90deg, #5b189a 0%, #1e40af 100%) !important;
+      color: #ffd60a !important;
+      border-bottom: 2px solid #ff2a85 !important;
     }
 
     /* Optional Pro Minimal Theme Override */
@@ -1687,7 +1731,8 @@
       palmares: [],
       // Weekly Mercato State
       preSeasonWeek: 1,        // 1..8 = Summer off-season weeks (15 June -> 15 Aug, no matches); 9 = Season started
-      winterPauseWeekDone: false, // Mid-January no-match mercato week (between MD 20 on 6 Jan and MD 21 on 16 Jan)
+      winterPauseWeekDone: false,
+      midSeasonRatingsDone: false, // Mid-January no-match mercato week (between MD 20 on 6 Jan and MD 21 on 16 Jan)
       postSeasonWeek: 0,       // After MD 38: weeks of summer mercato before launching next season
       lastMercatoPhaseSeen: '', // Tracks 'summer_pre', 'winter', 'summer_post' to trigger "MERCATO OUVERT" animation
       transfersLog: [],        // All transfers of the season
@@ -2521,6 +2566,7 @@
       state.currentMatchday = 1;
       state.preSeasonWeek = 1;
       state.winterPauseWeekDone = false;
+      state.midSeasonRatingsDone = false;
       state.postSeasonWeek = 0;
       state.lastMercatoPhaseSeen = '';
       state.transfersLog = [];
@@ -2682,8 +2728,6 @@
       match.motm = computeMatchMotm(homeClub, awayClub, match);
       updateMatchRecords(homeClub, awayClub, match.homeScore, match.awayScore);
       updateClubsMoraleAfterMatch(homeClub, awayClub, match.homeScore, match.awayScore);
-      updateMatchRecords(homeClub, awayClub, match.homeScore, match.awayScore);
-      updateClubsMoraleAfterMatch(homeClub, awayClub, match.homeScore, match.awayScore);
 
       if (match.isCup) {
         if (homeScore > awayScore) match.winnerId = homeClub.id;
@@ -2739,9 +2783,9 @@
         if (d.getMonth() === 0) {
           generateFiveRealisticTransfers(formatDateFr(d));
         }
-        const nextProg = getSeasonCurrentProgressMatchday();
-        if (nextProg <= getLeagueTotalMd()) state.currentMatchday = nextProg;
+
         autoSimulateFaCupForMatchday(mdNumber);
+        checkAndRunMidSeasonRatingsUpdate();
         playSound('whistle');
         showToast(`Journée ${mdNumber} simulée (${newlySimulated} matchs) !`);
       } else {
@@ -2907,19 +2951,10 @@
       });
       state.freeAgents = state.freeAgents.slice(0, 24);
 
+      applyProportionalRatingsUpdate(false, standings);
       state.clubs.forEach(club => {
         club.players.forEach(p => {
           p.age += 1;
-          let delta = 0;
-          if (p.age <= 24) {
-            delta = Math.floor(Math.random() * 3) + 1;
-          } else if (p.age <= 29) {
-            delta = Math.floor(Math.random() * 3) - 1;
-          } else {
-            delta = -Math.floor(Math.random() * 2);
-          }
-          if (p.goals >= 15 || p.assists >= 10) delta = Math.min(3, delta + 1);
-          p.rating = Math.max(65, Math.min(95, p.rating + delta));
           p.goals = 0;
           p.assists = 0;
           p.yellowCards = 0;
@@ -2933,6 +2968,7 @@
       state.currentMatchday = 1;
       state.preSeasonWeek = 1;
       state.winterPauseWeekDone = false;
+      state.midSeasonRatingsDone = false;
       state.postSeasonWeek = 0;
       state.lastMercatoPhaseSeen = '';
       state.transfersLog = [];
@@ -4379,14 +4415,14 @@
     // ==================== SQUADS, PLAYER RATING EDITOR & TRANSFERS ====================
     function populateSquadSelectors() {
       const sel = document.getElementById('squadClubSelect');
-      if (sel.options.length !== 20) {
+      if (sel.options.length !== state.clubs.length || (state.clubs[0] && sel.options[0].value !== state.clubs[0].id)) {
         sel.innerHTML = state.clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
       }
       sel.value = state.selectedSquadClubId;
 
       const mFromSel = document.getElementById('mercatoFromClubSelect');
       if (mFromSel) {
-        if (mFromSel.options.length !== 20) {
+        if (mFromSel.options.length !== state.clubs.length || (state.clubs[0] && mFromSel.options[0].value !== state.clubs[0].id)) {
           mFromSel.innerHTML = state.clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         }
         mFromSel.value = state.selectedSquadClubId;
@@ -4569,6 +4605,7 @@
             <td class="py-2.5 px-2.5 text-center text-slate-400">${p.age} ans</td>
             <td class="py-2.5 px-2.5 text-center">
               <span class="px-2 py-0.5 rounded font-bold ${p.rating >= 85 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/[0.06] text-white'}">${p.rating}</span>
+              ${p.lastDelta > 0 ? `<span class="ml-1 text-[10px] font-extrabold text-emerald-400">▲+${p.lastDelta}</span>` : (p.lastDelta < 0 ? `<span class="ml-1 text-[10px] font-extrabold text-rose-400">▼${p.lastDelta}</span>` : '')}
             </td>
             <td class="py-2.5 px-2.5 text-center text-slate-400 font-medium">${p.apps || 0}</td>
             <td class="py-2.5 px-2.5 text-center font-bold text-emerald-400">${p.goals}</td>
@@ -5712,6 +5749,7 @@
 
 
     function checkAndRunAutoMercatoForRound(mdNumber) {
+      checkAndRunMidSeasonRatingsUpdate();
       if (!mdNumber || mdNumber < 1 || mdNumber > 38) return;
       const round = state.schedule[mdNumber - 1];
       if (!round || !round.every(m => m.played)) return;
@@ -5730,19 +5768,38 @@
 
     // ==================== ACADÉMIE U19, CONTRATS & AGENTS LIBRES, RECORDS, PROCHAIN MATCH ====================
     function generateAcademyProspectsForClub(club) {
-      const firstNames = ['Leo', 'Ethan', 'Noah', 'Callum', 'Jude', 'Mason', 'Toby', 'Harvey', 'Milo', 'Archie', 'Kieran', 'Dylan'];
-      const lastNames = ['Wright', 'Taylor', 'Bennett', 'Hughes', 'Carter', 'Evans', 'Brooks', 'Hayes', 'shaw', 'Parker', 'Kelly', 'Ward'];
+      const namePools = {
+        pl: [['Leo','Ethan','Noah','Callum','Toby','Harvey','Archie','Kieran','Alfie','finlay'],['Wright','Taylor','Bennett','Hughes','Carter','Evans','Brooks','Hayes','Parker','Ward']],
+        laliga: [['Mateo','Hugo','Lucas','Martín','Daniel','Pablo','Alejandro','Álvaro','Iker','Marc'],['García','Fernández','López','Sánchez','Ruiz','Moreno','Navarro','Torres','Vázquez','Gil']],
+        seriea: [['Lorenzo','Matteo','Alessandro','Gabriele','Tommaso','Leonardo','Riccardo','Andrea','Filippo','Simone'],['Rossi','Russo','Ferrari','Esposito','Bianchi','Romano','Colombo','Conti','Gallo','Greco']],
+        bundesliga: [['Lukas','Finn','Jonas','Leon','Noah','Paul','Elias','Maximilian','Julian','Felix'],['Müller','Schmidt','Schneider','Fischer','Weber','Meyer','Wagner','Becker','Hoffmann','Schulz']],
+        ligue1: [['Lucas','Enzo','Mathis','Nolan','Théo','Yanis','Rayan','Gabriel','Sacha','Léo'],['Martin','Bernard','Dubois','Moreau','Laurent','Lefebvre','Mercier','Girard','Diallo','Bamba']]
+      };
+      const pool = namePools[typeof state !== 'undefined' && state.activeLeagueId ? state.activeLeagueId : 'pl'] || namePools.pl;
       const positions = ['G', 'DC', 'DL', 'MC', 'MO', 'AIL', 'BU'];
       return [0, 1, 2].map(i => {
-        const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-        const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const fn = pool[0][Math.floor(Math.random() * pool[0].length)];
+        const ln = pool[1][Math.floor(Math.random() * pool[1].length)];
         const pos = positions[Math.floor(Math.random() * positions.length)];
+        const roll = Math.random();
+        let tier = 'Rotation', rating, potential;
+        if (roll < 0.03) {
+          tier = 'Crack'; rating = 72 + Math.floor(Math.random() * 4); potential = 87 + Math.floor(Math.random() * 5);
+        } else if (roll < 0.16) {
+          tier = 'Pépite'; rating = 68 + Math.floor(Math.random() * 4); potential = 81 + Math.floor(Math.random() * 5);
+        } else if (roll < 0.48) {
+          tier = 'Prometteur'; rating = 64 + Math.floor(Math.random() * 5); potential = 75 + Math.floor(Math.random() * 6);
+        } else {
+          tier = 'Rotation'; rating = 59 + Math.floor(Math.random() * 6); potential = 68 + Math.floor(Math.random() * 7);
+        }
         return {
           id: `acad_${club.id}_${Date.now()}_${i}_${Math.floor(Math.random() * 999)}`,
-          name: `${fn} ${ln.charAt(0).toUpperCase() + ln.slice(1)}`,
+          name: `${fn.charAt(0).toUpperCase() + fn.slice(1)} ${ln}`,
           pos,
           age: 16 + Math.floor(Math.random() * 3),
-          rating: 68 + Math.floor(Math.random() * 8)
+          rating,
+          potential,
+          tier
         };
       });
     }
@@ -5752,23 +5809,35 @@
       if (!grid || !club) return;
       if (!Array.isArray(club.academy)) club.academy = generateAcademyProspectsForClub(club);
       if (club.academy.length === 0) {
-        grid.innerHTML = '<p class="text-xs text-slate-500 col-span-3 py-2">Toutes les pépites de la promotion ont déjà été promues cette saison.</p>';
+        grid.innerHTML = '<p class="text-xs text-slate-500 col-span-3 py-2">Tous les jeunes de la promotion ont déjà été promus cette saison.</p>';
         return;
       }
-      grid.innerHTML = club.academy.map(pr => `
-        <div class="bg-[#090b10] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold">${pr.pos}</span>
-              <span class="text-xs font-bold text-white truncate">${pr.name}</span>
+      grid.innerHTML = club.academy.map(pr => {
+        const tierCls = pr.tier === 'Crack'
+          ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+          : pr.tier === 'Pépite'
+            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+            : pr.tier === 'Prometteur'
+              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40'
+              : 'bg-white/[0.06] text-slate-400 border-white/10';
+        return `
+          <div class="bg-[#090b10] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold">${pr.pos}</span>
+                <span class="text-xs font-bold text-white truncate">${pr.name}</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">
+                ${pr.age} ans • OVR <strong class="text-white">${pr.rating}</strong> • Pot. <strong class="text-emerald-400">${pr.potential || pr.rating + 8}</strong>
+                <span class="ml-1 px-1.5 py-0.2 rounded border text-[9px] font-bold uppercase ${tierCls}">${pr.tier || 'Rotation'}</span>
+              </p>
             </div>
-            <p class="text-[11px] text-slate-400 mt-1">${pr.age} ans • OVR <strong class="text-emerald-400">${pr.rating}</strong></p>
+            <button onclick="promoteAcademyPlayer('${club.id}', '${pr.id}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold shrink-0 transition">
+              Promouvoir
+            </button>
           </div>
-          <button onclick="promoteAcademyPlayer('${club.id}', '${pr.id}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold shrink-0 transition">
-            Promouvoir
-          </button>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function promoteAcademyPlayer(clubId, prospectId) {
@@ -5790,6 +5859,7 @@
         starter: false,
         goals: 0, assists: 0, yellowCards: 0, redCards: 0, cleanSheets: 0, apps: 0,
         suspendedMatches: 0, injuredMatches: 0,
+        potential: pr.potential || 78,
         contractYears: 3
       });
       saveState();
@@ -6447,9 +6517,30 @@
         ]
       },
       {
-        id: 'lem', tmId: 994, name: "Le Mans FC", short: 'LEM', primary: '#D50032', secondary: '#F7B500',
+        id: 'asse', tmId: 618, name: "AS Saint-Étienne", short: 'ASSE', primary: '#008A45', secondary: '#FFFFFF',
         players: [
-          { name: "Nicolas Kocik", pos: 'G', age: 28, rating: 75, starter: true }, { name: "Ewan Hatfout", pos: 'G', age: 26, rating: 73, starter: false }, { name: "Harold Voyer", pos: 'DC', age: 29, rating: 75, starter: true }, { name: "Th\u00e9o Eyoum", pos: 'DC', age: 24, rating: 75, starter: true }, { name: "Samuel Yohou", pos: 'DC', age: 35, rating: 74, starter: false }, { name: "Lucas Buades", pos: 'DL', age: 28, rating: 75, starter: false }, { name: "Anthony Ribelin", pos: 'DL', age: 30, rating: 75, starter: true }, { name: "Edwin Quarshie", pos: 'MC', age: 31, rating: 75, starter: true }, { name: "Alexandre Lauray", pos: 'MC', age: 29, rating: 75, starter: true }, { name: "Martin Rossignol", pos: 'MC', age: 23, rating: 75, starter: true }, { name: "Gabin Bernardeau", pos: 'MO', age: 20, rating: 76, starter: false }, { name: "Dame Gueye", pos: 'AIL', age: 31, rating: 75, starter: false }, { name: "Antoine Rabillard", pos: 'AIL', age: 31, rating: 75, starter: true }, { name: "Arnold Vula", pos: 'BU', age: 27, rating: 76, starter: false }, { name: "William Harhouz", pos: 'BU', age: 26, rating: 75, starter: true }, { name: "Isaac Cossier", pos: 'DC', age: 19, rating: 74, starter: true }, { name: "Milan Robin", pos: 'MC', age: 27, rating: 74, starter: false }, { name: "Malang Gomes", pos: 'MC', age: 21, rating: 74, starter: true }, { name: "Jean Vercruysse", pos: 'MO', age: 26, rating: 75, starter: false }, { name: "Baptiste Guillaume", pos: 'BU', age: 31, rating: 75, starter: false }, { name: "Lucas Calodat", pos: 'DL', age: 24, rating: 74, starter: false }, { name: "Augustin Delbecque", pos: 'G', age: 24, rating: 72, starter: false }
+          { name: "Gautier Larsonneur", pos: 'G', age: 29, rating: 79, starter: true },
+          { name: "Mamour Ndiaye", pos: 'G', age: 21, rating: 75, starter: false },
+          { name: "Chico Lamba", pos: 'DC', age: 23, rating: 78, starter: true },
+          { name: "Sohaib Naïr", pos: 'DC', age: 24, rating: 78, starter: true },
+          { name: "Maxime Bernauer", pos: 'DC', age: 28, rating: 77, starter: false },
+          { name: "Julien Le Cardinal", pos: 'DC', age: 29, rating: 77, starter: false },
+          { name: "João Ferreira", pos: 'DL', age: 25, rating: 77, starter: true },
+          { name: "Ben Old", pos: 'DL', age: 24, rating: 77, starter: true },
+          { name: "Tamar Svetlin", pos: 'MC', age: 25, rating: 78, starter: true },
+          { name: "Mahmoud Jaber", pos: 'MC', age: 27, rating: 77, starter: true },
+          { name: "Áron Csongvai", pos: 'MC', age: 26, rating: 77, starter: false },
+          { name: "Paul Eymard", pos: 'MC', age: 18, rating: 75, starter: false },
+          { name: "Jakob Breum", pos: 'MO', age: 23, rating: 78, starter: true },
+          { name: "Nadir El Jamali", pos: 'MO', age: 19, rating: 75, starter: false },
+          { name: "Zuriko Davitashvili", pos: 'AIL', age: 25, rating: 80, starter: true },
+          { name: "Thierno Ballo", pos: 'AIL', age: 24, rating: 78, starter: true },
+          { name: "Augustine Boakye", pos: 'AIL', age: 26, rating: 78, starter: false },
+          { name: "Irvin Cardona", pos: 'BU', age: 29, rating: 79, starter: true },
+          { name: "Joshua Duffus", pos: 'BU', age: 21, rating: 76, starter: false },
+          { name: "Kévin Pedro", pos: 'DC', age: 21, rating: 75, starter: false },
+          { name: "Lassana Traoré", pos: 'DL', age: 20, rating: 74, starter: false },
+          { name: "Lucas Lavallée", pos: 'G', age: 23, rating: 73, starter: false }
         ]
       }
     ]
@@ -6477,7 +6568,7 @@
       ligue1: [
         { id: 'fcn', tmId: 995, name: 'FC Nantes', short: 'FCN', primary: '#FDE100', secondary: '#008A45' },
         { id: 'fcm', tmId: 347, name: 'FC Metz', short: 'FCM', primary: '#7A1C24', secondary: '#FFFFFF' },
-        { id: 'asse', tmId: 618, name: 'AS Saint-Étienne', short: 'ASSE', primary: '#008A45', secondary: '#FFFFFF' },
+        { id: 'lem', tmId: 994, name: 'Le Mans FC', short: 'LEM', primary: '#D50032', secondary: '#F7B500' },
         { id: 'sdr', tmId: 1421, name: 'Stade de Reims', short: 'SDR', primary: '#D91A21', secondary: '#FFFFFF' }
       ]
     };
@@ -6498,7 +6589,7 @@
       if (!LEAGUES_CONFIG[newLeagueId] || newLeagueId === state.activeLeagueId) return;
       stopLiveMatchLoop();
       if (!state.savedLeagues) state.savedLeagues = {};
-      const keysToSave = ['seasonYear','currentMatchday','standingsFilter','selectedSquadClubId','managedClubId','selectedMatchId','clubs','schedule','palmares','preSeasonWeek','winterPauseWeekDone','postSeasonWeek','lastMercatoPhaseSeen','transfersLog','lastBatchTransfers','externalPool','faCup','freeAgents','records','championshipPool'];
+      const keysToSave = ['seasonYear','currentMatchday','standingsFilter','selectedSquadClubId','managedClubId','selectedMatchId','clubs','schedule','palmares','preSeasonWeek','winterPauseWeekDone','midSeasonRatingsDone','postSeasonWeek','lastMercatoPhaseSeen','transfersLog','lastBatchTransfers','externalPool','faCup','freeAgents','records','championshipPool'];
       const snapshot = {};
       keysToSave.forEach(k => { snapshot[k] = state[k]; });
       state.savedLeagues[state.activeLeagueId] = snapshot;
@@ -6518,6 +6609,91 @@
       refreshAllViews();
       if (state.selectedMatchId) loadMatchIntoLivePanel(state.selectedMatchId, false);
       showToast(`Championnat chargé : ${getActiveLeagueConfig().name} 2026/27 !`);
+    }
+
+
+    // ==================== MISE À JOUR PROPORTIONNELLE DES NOTES (STYLE EA FC) ====================
+    function checkAndRunMidSeasonRatingsUpdate() {
+      if (state.midSeasonRatingsDone) return;
+      const midMd = Math.floor(getLeagueTotalMd() / 2);
+      const midRound = state.schedule[midMd - 1];
+      if (!midRound || !midRound.every(m => m.played)) return;
+      state.midSeasonRatingsDone = true;
+      applyProportionalRatingsUpdate(true, computeStandings('all'));
+    }
+
+    function applyProportionalRatingsUpdate(isMidSeason, standings) {
+      const rankMap = new Map();
+      (standings || []).forEach((r, idx) => rankMap.set(r.club.id, idx + 1));
+      const totalTeams = Math.max(18, state.clubs.length);
+      let upgrades = 0, downgrades = 0;
+      let bestUp = null, worstDown = null;
+
+      state.clubs.forEach(club => {
+        const rank = rankMap.get(club.id) || Math.ceil(totalTeams / 2);
+        const clubPerfBonus = rank <= 4 ? 0.25 : (rank >= totalTeams - 3 ? -0.25 : 0);
+
+        club.players.forEach(p => {
+          const apps = p.apps || 0;
+          if (apps < 3) {
+            p.lastDelta = 0;
+            return;
+          }
+          const gaPerGame = ((p.goals || 0) * 1.3 + (p.assists || 0) * 0.9) / apps;
+          const csRate = (p.cleanSheets || 0) / apps;
+          const discPenalty = (p.redCards || 0) * 0.35 + (p.yellowCards || 0) * 0.03;
+
+          let perf = clubPerfBonus - discPenalty;
+          if (p.pos === 'BU' || p.pos === 'AIL') {
+            perf += gaPerGame >= 0.62 ? 1.0 : (gaPerGame >= 0.36 ? 0.45 : (gaPerGame < 0.14 ? -0.7 : 0));
+          } else if (p.pos === 'MO' || p.pos === 'MC') {
+            perf += gaPerGame >= 0.45 ? 0.9 : (gaPerGame >= 0.24 ? 0.4 : (gaPerGame < 0.08 && rank > 12 ? -0.55 : 0));
+          } else {
+            perf += csRate >= 0.38 ? 0.85 : (csRate >= 0.25 ? 0.35 : (csRate < 0.12 && rank > 13 ? -0.6 : 0));
+          }
+
+          // Age curve (EA FC style: young players grow faster, 31+ decline faster)
+          if (p.age <= 22) perf += 0.35;
+          else if (p.age >= 32) perf -= 0.45;
+          if (p.age >= 35) perf -= 0.35;
+
+          // Proportional caps by current OVR (90+ max +1, 86-89 max +1/+2, 82-85 max +2, <=81 max +3)
+          let maxUp = 3, maxDown = 3;
+          if (p.rating >= 90) { maxUp = 1; maxDown = p.age >= 34 ? 2 : 1; }
+          else if (p.rating >= 86) { maxUp = (p.age <= 24 && !isMidSeason) ? 2 : 1; maxDown = 2; }
+          else if (p.rating >= 82) { maxUp = isMidSeason ? 1 : 2; maxDown = 2; }
+          else { maxUp = isMidSeason ? 2 : 3; maxDown = isMidSeason ? 2 : 3; }
+
+          let delta = 0;
+          if (perf >= 1.1) delta = maxUp;
+          else if (perf >= 0.55) delta = Math.min(maxUp, isMidSeason ? 1 : 2);
+          else if (perf >= 0.28) delta = Math.min(maxUp, 1);
+          else if (perf <= -0.95) delta = -maxDown;
+          else if (perf <= -0.5) delta = -Math.min(maxDown, isMidSeason ? 1 : 2);
+          else if (perf <= -0.25) delta = -1;
+
+          const oldR = p.rating;
+          const capHigh = p.potential ? Math.min(94, p.potential) : (oldR >= 90 ? 94 : 93);
+          p.rating = Math.max(65, Math.min(capHigh, oldR + delta));
+          p.lastDelta = p.rating - oldR;
+
+          if (p.lastDelta > 0) {
+            upgrades++;
+            if (!bestUp || p.lastDelta > bestUp.d || (p.lastDelta === bestUp.d && p.rating > bestUp.r)) {
+              bestUp = { name: p.name, d: p.lastDelta, r: p.rating };
+            }
+          } else if (p.lastDelta < 0) {
+            downgrades++;
+            if (!worstDown || p.lastDelta < worstDown.d) {
+              worstDown = { name: p.name, d: p.lastDelta, r: p.rating };
+            }
+          }
+        });
+      });
+
+      const phaseLabel = isMidSeason ? 'Mi-Saison (Hiver)' : 'Fin de Saison';
+      const topTxt = bestUp ? ` • Top : ${bestUp.name} (+${bestUp.d} → ${bestUp.r})` : '';
+      showToast(`Mise à jour Notes ${phaseLabel} : ${upgrades} upgrades, ${downgrades} downgrades${topTxt}`);
     }
 
     // ==================== BOOTSTRAP ====================
