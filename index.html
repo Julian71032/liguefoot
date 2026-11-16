@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="fr" class="dark">
 <head>
@@ -190,7 +189,7 @@
         </div>
         <div>
           <div class="flex flex-wrap items-center gap-2.5">
-            <h1 class="font-pixel text-sm sm:text-base tracking-widest text-white drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]">PREMIER LEAGUE <span class="text-cyan-400">NEXUS</span></h1>
+            <h1 id="headerLeagueTitle" class="font-pixel text-sm sm:text-base tracking-widest text-white drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]">PREMIER LEAGUE <span class="text-cyan-400">NEXUS</span></h1>
             <span id="seasonBadge" class="font-retro-mono px-2.5 py-0.5 text-[11px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-400/50">2026/27</span>
           </div>
           <p class="font-retro-mono text-[11px] text-cyan-300/80 mt-0.5">HOLOGRAPHIC TACTICAL ENGINE • TRANSFERMARKT 2026/27 SYNC</p>
@@ -219,6 +218,14 @@
         <button onclick="switchTab('mercato')" id="headerMercatoBadge" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition cursor-pointer">
           Mercato Ouvert
         </button>
+
+        <select id="leagueSelector" onchange="switchLeague(this.value)" class="px-2.5 py-1.5 text-[11px] font-bold uppercase cursor-pointer" title="Changer de championnat (Big 5)">
+          <option value="pl">Premier League (ENG)</option>
+          <option value="laliga">La Liga (ESP)</option>
+          <option value="seriea">Serie A (ITA)</option>
+          <option value="bundesliga">Bundesliga (ALL)</option>
+          <option value="ligue1">Ligue 1 (FRA)</option>
+        </select>
 
         <div class="flex items-center gap-1.5">
           <select id="careerClubSelect" onchange="selectManagedClub(this.value)" class="px-2 py-1.5 text-[11px] font-bold cursor-pointer" title="Mode Carrière : choisir votre club">
@@ -425,7 +432,7 @@
     <section id="tab-standings" class="hidden space-y-4">
       <div class="card-glass rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 class="text-base font-bold text-white">Classement Premier League 2026/27</h2>
+          <h2 id="standingsLeagueTitle" class="text-base font-bold text-white">Classement Premier League 2026/27</h2>
           <p class="text-xs text-slate-400">Cliquez sur un club pour inspecter son effectif complet</p>
         </div>
         <div class="flex items-center gap-1 bg-[#090b10] p-1 rounded-lg border border-white/[0.07]">
@@ -1658,6 +1665,8 @@
     // ==================== APPLICATION STATE ====================
     const STORAGE_KEY = 'pl_simulator_state_2627_pro_v5';
     let state = {
+      activeLeagueId: 'pl',
+      savedLeagues: {},
       seasonYear: 2026,
       currentMatchday: 1,
       standingsFilter: 'all',
@@ -1873,9 +1882,10 @@
       return 48;
     }
 
-    function buildDeepCopyClubs() {
+    function buildDeepCopyClubs(leagueId = state.activeLeagueId) {
       let pidCounter = 1;
-      return INITIAL_CLUBS_DATA.map(club => ({
+      const src = (leagueId === 'pl' || !EXTRA_LEAGUES_CLUBS[leagueId]) ? INITIAL_CLUBS_DATA : EXTRA_LEAGUES_CLUBS[leagueId];
+      return src.map(club => ({
         id: club.id,
         tmId: club.tmId,
         name: club.name,
@@ -2246,7 +2256,7 @@
     const MONTHS_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
     function getMatchdayDateObj(mdNumber, seasonYear = state.seasonYear) {
-      const idx = Math.max(0, Math.min(37, (mdNumber || 1) - 1));
+      const totalMd = getLeagueTotalMd(); const idx = totalMd === 34 ? Math.min(37, Math.round(((mdNumber || 1) - 1) * 37 / 33)) : Math.max(0, Math.min(37, (mdNumber || 1) - 1));
       const spec = MATCHDAY_OFFSETS[idx];
       return new Date(seasonYear + spec.yOff, spec.m, spec.d);
     }
@@ -2385,7 +2395,7 @@
         return;
       } else if (tw.hasMatchThisWeek) {
         const activeMd = getSeasonCurrentProgressMatchday();
-        if (activeMd <= 38) {
+        if (activeMd <= getLeagueTotalMd()) {
           state.currentMatchday = activeMd;
           const round = state.schedule[activeMd - 1];
           if (round) {
@@ -2396,7 +2406,7 @@
           if (tw.type === 'winter') {
             generateFiveRealisticTransfers(tw.dateText, 5);
           }
-          if (activeMd < 38) state.currentMatchday = activeMd + 1;
+          if (activeMd < getLeagueTotalMd()) state.currentMatchday = activeMd + 1;
         }
         playSound('whistle');
         showToast(`Semaine du ${tw.dateText} avancée !`);
@@ -2490,19 +2500,12 @@
     }
 
     function initFreshSeason(resetRosters = true) {
-      if (resetRosters || !state.clubs || state.clubs.length !== 20) {
-        state.clubs = buildDeepCopyClubs();
+      const lCfg = getActiveLeagueConfig();
+      if (resetRosters || !state.clubs || state.clubs.length !== lCfg.teamCount) {
+        state.clubs = buildDeepCopyClubs(state.activeLeagueId);
         state.seasonYear = 2026;
-        state.palmares = [
-          {
-            season: '2025/26 (Archive)',
-            champion: 'Arsenal',
-            points: 85,
-            runnerUp: 'Manchester City',
-            topScorer: 'Erling Haaland (27 buts)',
-            topAssister: 'Bruno Fernandes (21 passes)'
-          }
-        ];
+        state.palmares = [lCfg.archivePalmares];
+        state.records = JSON.parse(JSON.stringify(lCfg.defaultRecords));
       } else {
         state.clubs.forEach(c => {
           c.players.forEach(p => {
@@ -2737,7 +2740,7 @@
           generateFiveRealisticTransfers(formatDateFr(d));
         }
         const nextProg = getSeasonCurrentProgressMatchday();
-        if (nextProg <= 38) state.currentMatchday = nextProg;
+        if (nextProg <= getLeagueTotalMd()) state.currentMatchday = nextProg;
         autoSimulateFaCupForMatchday(mdNumber);
         playSound('whistle');
         showToast(`Journée ${mdNumber} simulée (${newlySimulated} matchs) !`);
@@ -2779,7 +2782,7 @@
           autoSimulateFaCupForMatchday(targetMd);
         }
         daysSimulated++;
-        if (state.currentMatchday < 38) {
+        if (state.currentMatchday < getLeagueTotalMd()) {
           state.currentMatchday++;
         } else {
           break;
@@ -2823,8 +2826,8 @@
           autoSimulateFaCupForMatchday(mdNum);
         }
       });
-      state.currentMatchday = 38;
-      const lastRound = state.schedule[37];
+      state.currentMatchday = getLeagueTotalMd();
+      const lastRound = state.schedule[getLeagueTotalMd() - 1];
       if (lastRound && lastRound[0]) {
         state.selectedMatchId = lastRound[0].id;
         loadMatchIntoLivePanel(lastRound[0].id, false);
@@ -4065,8 +4068,15 @@
 
       const seasonStr = `${state.seasonYear}/${String((state.seasonYear + 1) % 100).padStart(2, '0')}`;
       document.getElementById('seasonBadge').textContent = seasonStr;
+      const lCfg = getActiveLeagueConfig();
+      const hTitle = document.getElementById('headerLeagueTitle');
+      if (hTitle) hTitle.innerHTML = `${lCfg.titleUpper} <span class="text-cyan-400">NEXUS</span>`;
+      const sTitle = document.getElementById('standingsLeagueTitle');
+      if (sTitle) sTitle.textContent = `Classement ${lCfg.name} ${seasonStr}`;
+      const lSel = document.getElementById('leagueSelector');
+      if (lSel) lSel.value = state.activeLeagueId || 'pl';
       const curDateStr = formatDateFr(getMatchdayDateObj(state.currentMatchday));
-      document.getElementById('headerMatchday').textContent = `${state.currentMatchday} / 38 • ${curDateStr}`;
+      document.getElementById('headerMatchday').textContent = `${state.currentMatchday} / ${getLeagueTotalMd()} • ${curDateStr}`;
       const twStatus = getTransferWindowStatus();
       const mercatoBadge = document.getElementById('headerMercatoBadge');
       if (mercatoBadge) {
@@ -4098,10 +4108,10 @@
 
       const avg = totalPlayed > 0 ? (totalGoals / totalPlayed).toFixed(2) : '0.00';
       document.getElementById('kpiGoalsAvg').textContent = `${avg} / match`;
-      document.getElementById('kpiMatchesPlayed').textContent = `${totalPlayed} / 380 matchs joués`;
+      document.getElementById('kpiMatchesPlayed').textContent = `${totalPlayed} / ${getLeagueTotalMd() * getLeagueMatchesPerMd()} matchs joués`;
 
       const nextSeasonBtn = document.getElementById('nextSeasonBtn');
-      if (totalPlayed === 380) {
+      if (totalPlayed === getLeagueTotalMd() * getLeagueMatchesPerMd()) {
         nextSeasonBtn.classList.remove('hidden');
       } else {
         nextSeasonBtn.classList.add('hidden');
@@ -4110,11 +4120,11 @@
 
     function populateMatchdaySelect() {
       const sel = document.getElementById('matchdaySelect');
-      sel.innerHTML = Array.from({ length: 38 }, (_, idx) => {
+      sel.innerHTML = Array.from({ length: getLeagueTotalMd() }, (_, idx) => {
         const md = idx + 1;
         const d = getMatchdayDateObj(md);
         const tag = (d.getMonth() === 0 || d.getMonth() === 7) ? ' [Mercato]' : '';
-        const cupTag = FA_CUP_MD_SCHEDULE[md] ? ` [${FA_CUP_MD_SCHEDULE[md].label}]` : '';
+        const cupTag = getActiveCupScheduleMap()[md] ? ` [${getActiveCupScheduleMap()[md].label}]` : '';
         return `<option value="${md}">Journée ${md} — ${formatDateFr(d)}${tag}${cupTag}</option>`;
       }).join('');
       sel.value = String(state.currentMatchday);
@@ -4125,10 +4135,10 @@
       const playedCount = round.filter(m => m.played).length;
       const mdDate = getMatchdayDateObj(state.currentMatchday);
       const isMercatoMd = mdDate.getMonth() === 0 || mdDate.getMonth() === 7;
-      document.getElementById('matchdayTitle').innerHTML = `Journée ${state.currentMatchday} sur 38 <span class="text-[#00ff85] font-bold text-sm ml-1">• ${formatDateFr(mdDate)}</span>` + (isMercatoMd ? ` <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Fenêtre Mercato</span>` : '');
+      document.getElementById('matchdayTitle').innerHTML = `Journée ${state.currentMatchday} sur ${getLeagueTotalMd()} <span class="text-[#00ff85] font-bold text-sm ml-1">• ${formatDateFr(mdDate)}</span>` + (isMercatoMd ? ` <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Fenêtre Mercato</span>` : '');
       const badge = document.getElementById('matchdayStatusBadge');
-      badge.textContent = `${playedCount} / 10 joués`;
-      badge.className = playedCount === 10
+      const mPerMd = getLeagueMatchesPerMd(); badge.textContent = `${playedCount} / ${mPerMd} joués`;
+      badge.className = playedCount === mPerMd
         ? 'px-2.5 py-1 rounded-full text-xs font-bold bg-[#00ff85]/20 text-[#00ff85]'
         : 'px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300';
 
@@ -4230,7 +4240,7 @@
         } else if (pos === 7) {
           posIndicator = 'border-l-4 border-purple-400';
           posBadgeClass = 'bg-purple-500/20 text-purple-300';
-        } else if (pos >= 18) {
+        } else if (pos >= (state.clubs.length === 18 ? 17 : 18)) {
           posIndicator = 'border-l-4 border-rose-500';
           posBadgeClass = 'bg-rose-500/20 text-rose-300';
         }
@@ -4853,13 +4863,13 @@
     }
 
     function changeMatchday(delta) {
-      const next = Math.max(1, Math.min(38, state.currentMatchday + delta));
+      const next = Math.max(1, Math.min(getLeagueTotalMd(), state.currentMatchday + delta));
       selectMatchday(next);
     }
 
     function selectMatchday(val) {
       stopLiveMatchLoop();
-      state.currentMatchday = Math.max(1, Math.min(38, parseInt(val, 10) || 1));
+      state.currentMatchday = Math.max(1, Math.min(getLeagueTotalMd(), parseInt(val, 10) || 1));
       const round = state.schedule[state.currentMatchday - 1];
       if (round && round[0]) {
         state.selectedMatchId = round[0].id;
@@ -4978,7 +4988,7 @@
       reader.onload = function(e) {
         try {
           const parsed = JSON.parse(e.target.result);
-          if (!parsed || !Array.isArray(parsed.clubs) || parsed.clubs.length !== 20 || !Array.isArray(parsed.schedule)) {
+          if (!parsed || !Array.isArray(parsed.clubs) || parsed.clubs.length < 18 || !Array.isArray(parsed.schedule)) {
             showToast('Fichier JSON invalide : structure Premier League introuvable.');
             return;
           }
@@ -5250,10 +5260,11 @@
     // ==================== FA CUP & TIRS AU BUT 2D ====================
     function initFaCupBracket(refresh = true) {
       const shuffled = [...state.clubs].sort(() => Math.random() - 0.5);
-      const prelimClubs = shuffled.slice(0, 8);
-      const byeClubs = shuffled.slice(8, 20);
+      const prelimCount = state.clubs.length === 18 ? 4 : 8;
+      const prelimClubs = shuffled.slice(0, prelimCount);
+      const byeClubs = shuffled.slice(prelimCount);
       const prelimMatches = [];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < prelimCount / 2; i++) {
         prelimMatches.push({
           id: `facup_r0_m${i + 1}`,
           isCup: true,
@@ -5418,8 +5429,28 @@
       37: { roundIdx: 4, label: 'FA Cup • Finale', date: '15 mai' }
     };
 
+    function getActiveCupScheduleMap() {
+      const cupName = getActiveLeagueConfig().cupName;
+      if (getLeagueTotalMd() === 34) {
+        return {
+          17: { roundIdx: 0, label: `${cupName} • Barrage`, date: '9 janv.' },
+          23: { roundIdx: 1, label: `${cupName} • 8èmes`, date: '27 févr.' },
+          27: { roundIdx: 2, label: `${cupName} • Quarts`, date: '20 mars' },
+          31: { roundIdx: 3, label: `${cupName} • Demies`, date: '24 avr.' },
+          33: { roundIdx: 4, label: `${cupName} • Finale`, date: '15 mai' }
+        };
+      }
+      return {
+        20: { roundIdx: 0, label: `${cupName} • 3e Tour`, date: '9 janv.' },
+        27: { roundIdx: 1, label: `${cupName} • 8èmes`, date: '27 févr.' },
+        31: { roundIdx: 2, label: `${cupName} • Quarts`, date: '20 mars' },
+        35: { roundIdx: 3, label: `${cupName} • Demies`, date: '24 avr.' },
+        37: { roundIdx: 4, label: `${cupName} • Finale`, date: '15 mai' }
+      };
+    }
+
     function autoSimulateFaCupForMatchday(mdNumber) {
-      const cfg = FA_CUP_MD_SCHEDULE[mdNumber];
+      const cfg = getActiveCupScheduleMap()[mdNumber];
       if (!cfg || !state.faCup) return;
       const round = state.faCup.rounds[cfg.roundIdx];
       if (!round) return;
@@ -5439,12 +5470,12 @@
       if (!box || !cup) return;
 
       const md = state.currentMatchday;
-      const cfg = FA_CUP_MD_SCHEDULE[md];
+      const cfg = getActiveCupScheduleMap()[md];
       if (!cfg) {
         if (md >= 37 && cup.winnerId) {
           const w = getClubById(cup.winnerId);
           box.classList.remove('hidden');
-          box.innerHTML = `<div class="flex items-center justify-between text-xs bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2"><span class="font-bold text-amber-300">🏆 FA Cup ${state.seasonYear}/${(state.seasonYear + 1) % 100} : Vainqueur ${w ? w.name : '-'}</span></div>`;
+          box.innerHTML = `<div class="flex items-center justify-between text-xs bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2"><span class="font-bold text-amber-300">🏆 ${getActiveLeagueConfig().cupName} ${state.seasonYear}/${(state.seasonYear + 1) % 100} : Vainqueur ${w ? w.name : '-'}</span></div>`;
         } else {
           box.classList.add('hidden');
           box.innerHTML = '';
@@ -5467,7 +5498,7 @@
             <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40 text-[10px] font-bold uppercase">${cfg.date}</span>
             <h3 class="text-xs sm:text-sm font-extrabold text-amber-300">${round.name}</h3>
           </div>
-          ${!allDone ? `<button onclick="simulateCurrentFaCupRound()" class="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] transition">Simuler ce tour FA Cup</button>` : `<span class="text-[11px] font-bold text-emerald-400">Tour terminé</span>`}
+          ${!allDone ? `<button onclick="simulateCurrentFaCupRound()" class="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] transition">Simuler ce tour (${getActiveLeagueConfig().cupName})</button>` : `<span class="text-[11px] font-bold text-emerald-400">Tour terminé</span>`}
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           ${round.matches.map(m => {
@@ -5657,14 +5688,16 @@
     }
 
     function processEndOfSeasonPromotionsAndRelegations(standings) {
-      if (!standings || standings.length < 20) return;
-      if (!Array.isArray(state.championshipPool) || state.championshipPool.length < 3) {
-        state.championshipPool = CHAMPIONSHIP_PROMO_POOL.map(buildChampionshipClub);
+      if (!standings || standings.length < 18) return;
+      const relCount = standings.length === 18 ? 2 : 3;
+      const poolTpl = EXTRA_PROMO_POOLS[state.activeLeagueId] || CHAMPIONSHIP_PROMO_POOL;
+      if (!Array.isArray(state.championshipPool) || state.championshipPool.length < relCount) {
+        state.championshipPool = poolTpl.map(buildChampionshipClub);
       }
-      const relegatedIds = new Set(standings.slice(17, 20).map(r => r.club.id));
+      const relegatedIds = new Set(standings.slice(standings.length - relCount).map(r => r.club.id));
       const relClubs = state.clubs.filter(c => relegatedIds.has(c.id));
       const stayingClubs = state.clubs.filter(c => !relegatedIds.has(c.id));
-      const promotedClubs = state.championshipPool.splice(0, 3);
+      const promotedClubs = state.championshipPool.splice(0, relCount);
       state.championshipPool.push(...relClubs);
       state.clubs = [...stayingClubs, ...promotedClubs];
 
@@ -5880,7 +5913,7 @@
       const cid = state.managedClubId;
       if (!cid) return;
       stopLiveMatchLoop();
-      for (let md = state.currentMatchday; md <= 38; md++) {
+      for (let md = state.currentMatchday; md <= getLeagueTotalMd(); md++) {
         const round = state.schedule[md - 1];
         if (!round) continue;
         const myMatch = round.find(m => !m.played && (m.homeId === cid || m.awayId === cid));
@@ -5924,6 +5957,567 @@
         homeClub.morale = Math.max(25, hm - 1);
         awayClub.morale = Math.min(100, am + 2);
       }
+    }
+
+
+    const LEAGUES_CONFIG = {
+      pl: {
+        id: 'pl', name: 'Premier League', titleUpper: 'PREMIER LEAGUE', cupName: 'FA Cup', teamCount: 20,
+        archivePalmares: { season: '2025/26 (Archive)', champion: 'Arsenal', points: 85, runnerUp: 'Manchester City', topScorer: 'Erling Haaland (27 buts)', topAssister: 'Bruno Fernandes (21 passes)', faCupWinner: 'Crystal Palace' },
+        defaultRecords: { bestPoints: { val: 85, label: 'Arsenal (2025/26)' }, bestScorerSeason: { val: 27, label: 'Erling Haaland (2025/26)' }, biggestWin: { val: 0, label: 'Aucun record enregistré' }, bestAttackSeason: { val: 0, label: 'À établir' } }
+      },
+      laliga: {
+        id: 'laliga', name: 'La Liga', titleUpper: 'LA LIGA', cupName: 'Copa del Rey', teamCount: 20,
+        archivePalmares: { season: '2025/26 (Archive)', champion: 'FC Barcelone', points: 88, runnerUp: 'Real Madrid', topScorer: 'Kylian Mbappé (29 buts)', topAssister: 'Lamine Yamal (19 passes)', faCupWinner: 'Real Sociedad' },
+        defaultRecords: { bestPoints: { val: 88, label: 'FC Barcelone (2025/26)' }, bestScorerSeason: { val: 29, label: 'Kylian Mbappé (2025/26)' }, biggestWin: { val: 0, label: 'Aucun record enregistré' }, bestAttackSeason: { val: 0, label: 'À établir' } }
+      },
+      seriea: {
+        id: 'seriea', name: 'Serie A', titleUpper: 'SERIE A', cupName: 'Coppa Italia', teamCount: 20,
+        archivePalmares: { season: '2025/26 (Archive)', champion: 'Inter Milan', points: 86, runnerUp: 'SSC Napoli', topScorer: 'Lautaro Martínez (24 buts)', topAssister: 'Federico Dimarco (14 passes)', faCupWinner: 'Juventus' },
+        defaultRecords: { bestPoints: { val: 86, label: 'Inter Milan (2025/26)' }, bestScorerSeason: { val: 24, label: 'Lautaro Martínez (2025/26)' }, biggestWin: { val: 0, label: 'Aucun record enregistré' }, bestAttackSeason: { val: 0, label: 'À établir' } }
+      },
+      bundesliga: {
+        id: 'bundesliga', name: 'Bundesliga', titleUpper: 'BUNDESLIGA', cupName: 'DFB-Pokal', teamCount: 18,
+        archivePalmares: { season: '2025/26 (Archive)', champion: 'Bayern Munich', points: 82, runnerUp: 'Borussia Dortmund', topScorer: 'Harry Kane (31 buts)', topAssister: 'Michael Olise (18 passes)', faCupWinner: 'Bayer Leverkusen' },
+        defaultRecords: { bestPoints: { val: 82, label: 'Bayern Munich (2025/26)' }, bestScorerSeason: { val: 31, label: 'Harry Kane (2025/26)' }, biggestWin: { val: 0, label: 'Aucun record enregistré' }, bestAttackSeason: { val: 0, label: 'À établir' } }
+      },
+      ligue1: {
+        id: 'ligue1', name: 'Ligue 1', titleUpper: 'LIGUE 1', cupName: 'Coupe de France', teamCount: 18,
+        archivePalmares: { season: '2025/26 (Archive)', champion: 'Paris Saint-Germain', points: 84, runnerUp: 'RC Lens', topScorer: 'Ousmane Dembélé (22 buts)', topAssister: 'Vitinha (13 passes)', faCupWinner: 'RC Lens' },
+        defaultRecords: { bestPoints: { val: 84, label: 'Paris Saint-Germain (2025/26)' }, bestScorerSeason: { val: 22, label: 'Ousmane Dembélé (2025/26)' }, biggestWin: { val: 0, label: 'Aucun record enregistré' }, bestAttackSeason: { val: 0, label: 'À établir' } }
+      }
+    };
+
+    const EXTRA_LEAGUES_CLUBS = {
+      laliga: [
+      {
+        id: 'bar', tmId: 131, name: "FC Barcelone", short: 'BAR', primary: '#A50044', secondary: '#004D98',
+        players: [
+          { name: "Joan Garc\u00eda", pos: 'G', age: 25, rating: 85, starter: true }, { name: "Wojciech Szcz\u0119sny", pos: 'G', age: 36, rating: 80, starter: false }, { name: "Pau Cubars\u00ed", pos: 'DC', age: 19, rating: 86, starter: true }, { name: "Ronald Ara\u00fajo", pos: 'DC', age: 27, rating: 86, starter: true }, { name: "I\u00f1igo Mart\u00ednez", pos: 'DC', age: 35, rating: 81, starter: false }, { name: "Eric Garc\u00eda", pos: 'DC', age: 25, rating: 80, starter: false }, { name: "Alejandro Balde", pos: 'DL', age: 23, rating: 85, starter: true }, { name: "Jules Kound\u00e9", pos: 'DL', age: 28, rating: 87, starter: true }, { name: "Pedri", pos: 'MC', age: 24, rating: 90, starter: true }, { name: "Gavi", pos: 'MC', age: 22, rating: 85, starter: true }, { name: "Frenkie de Jong", pos: 'MC', age: 29, rating: 86, starter: false }, { name: "Marc Casad\u00f3", pos: 'MC', age: 23, rating: 82, starter: false }, { name: "Dani Olmo", pos: 'MO', age: 28, rating: 87, starter: true }, { name: "Ferm\u00edn L\u00f3pez", pos: 'MO', age: 23, rating: 83, starter: false }, { name: "Lamine Yamal", pos: 'AIL', age: 19, rating: 92, starter: true }, { name: "Raphinha", pos: 'AIL', age: 29, rating: 89, starter: true }, { name: "Ferran Torres", pos: 'AIL', age: 26, rating: 82, starter: false }, { name: "Robert Lewandowski", pos: 'BU', age: 38, rating: 87, starter: true }, { name: "Marcus Rashford", pos: 'BU', age: 29, rating: 83, starter: false }, { name: "Ansu Fati", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Gerard Mart\u00edn", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "H\u00e9ctor Fort", pos: 'DL', age: 20, rating: 78, starter: false }
+        ]
+      },
+      {
+        id: 'rma', tmId: 418, name: "Real Madrid", short: 'RMA', primary: '#FEBE10', secondary: '#00529F',
+        players: [
+          { name: "Thibaut Courtois", pos: 'G', age: 34, rating: 89, starter: true }, { name: "Andriy Lunin", pos: 'G', age: 27, rating: 82, starter: false }, { name: "\u00c9der Milit\u00e3o", pos: 'DC', age: 28, rating: 86, starter: true }, { name: "Antonio R\u00fcdiger", pos: 'DC', age: 33, rating: 85, starter: true }, { name: "Dean Huijsen", pos: 'DC', age: 21, rating: 85, starter: false }, { name: "Ra\u00fal Asencio", pos: 'DC', age: 23, rating: 82, starter: false }, { name: "Trent Alexander-Arnold", pos: 'DL', age: 28, rating: 88, starter: true }, { name: "\u00c1lvaro Carreras", pos: 'DL', age: 23, rating: 83, starter: true }, { name: "Aur\u00e9lien Tchouam\u00e9ni", pos: 'MC', age: 26, rating: 86, starter: true }, { name: "Federico Valverde", pos: 'MC', age: 28, rating: 89, starter: true }, { name: "Eduardo Camavinga", pos: 'MC', age: 24, rating: 85, starter: false }, { name: "Jude Bellingham", pos: 'MO', age: 23, rating: 91, starter: false }, { name: "Arda G\u00fcler", pos: 'MO', age: 21, rating: 85, starter: true }, { name: "Dani Ceballos", pos: 'MC', age: 30, rating: 80, starter: false }, { name: "Vin\u00edcius J\u00fanior", pos: 'AIL', age: 26, rating: 91, starter: true }, { name: "Rodrygo", pos: 'AIL', age: 25, rating: 86, starter: true }, { name: "Brahim D\u00edaz", pos: 'AIL', age: 27, rating: 83, starter: false }, { name: "Kylian Mbapp\u00e9", pos: 'BU', age: 27, rating: 92, starter: true }, { name: "Endrick", pos: 'BU', age: 20, rating: 82, starter: false }, { name: "Gonzalo Garc\u00eda", pos: 'BU', age: 22, rating: 78, starter: false }, { name: "Ferland Mendy", pos: 'DL', age: 31, rating: 80, starter: false }, { name: "Fran Garc\u00eda", pos: 'DL', age: 27, rating: 79, starter: false }
+        ]
+      },
+      {
+        id: 'atm', tmId: 13, name: "Atl\u00e9tico Madrid", short: 'ATM', primary: '#CB3524', secondary: '#272E61',
+        players: [
+          { name: "Jan Oblak", pos: 'G', age: 33, rating: 87, starter: true }, { name: "Juan Musso", pos: 'G', age: 32, rating: 79, starter: false }, { name: "Jos\u00e9 Mar\u00eda Gim\u00e9nez", pos: 'DC', age: 31, rating: 83, starter: true }, { name: "Robin Le Normand", pos: 'DC', age: 30, rating: 84, starter: true }, { name: "Cl\u00e9ment Lenglet", pos: 'DC', age: 31, rating: 79, starter: false }, { name: "D\u00e1vid Hancko", pos: 'DC', age: 28, rating: 83, starter: false }, { name: "Nahuel Molina", pos: 'DL', age: 28, rating: 80, starter: true }, { name: "Matteo Ruggeri", pos: 'DL', age: 24, rating: 81, starter: true }, { name: "Marcos Llorente", pos: 'MC', age: 31, rating: 84, starter: true }, { name: "Pablo Barrios", pos: 'MC', age: 23, rating: 84, starter: true }, { name: "Johnny Cardoso", pos: 'MC', age: 25, rating: 82, starter: false }, { name: "Koke", pos: 'MC', age: 34, rating: 80, starter: false }, { name: "\u00c1lex Baena", pos: 'MO', age: 25, rating: 85, starter: true }, { name: "Thiago Almada", pos: 'MO', age: 25, rating: 82, starter: false }, { name: "Giuliano Simeone", pos: 'AIL', age: 23, rating: 82, starter: true }, { name: "Nico Gonz\u00e1lez", pos: 'AIL', age: 28, rating: 82, starter: true }, { name: "Juli\u00e1n \u00c1lvarez", pos: 'BU', age: 26, rating: 89, starter: false }, { name: "Alexander S\u00f8rloth", pos: 'BU', age: 30, rating: 83, starter: true }, { name: "Antoine Griezmann", pos: 'BU', age: 35, rating: 84, starter: false }, { name: "Giacomo Raspadori", pos: 'BU', age: 26, rating: 80, starter: false }, { name: "Javi Gal\u00e1n", pos: 'DL', age: 32, rating: 78, starter: false }, { name: "Marc Pubill", pos: 'DL', age: 23, rating: 79, starter: false }
+        ]
+      },
+      {
+        id: 'ath', tmId: 621, name: "Athletic Club", short: 'ATH', primary: '#EE2523', secondary: '#FFFFFF',
+        players: [
+          { name: "Unai Sim\u00f3n", pos: 'G', age: 29, rating: 85, starter: true }, { name: "Julen Agirrezabala", pos: 'G', age: 25, rating: 80, starter: false }, { name: "Dani Vivian", pos: 'DC', age: 27, rating: 84, starter: true }, { name: "Aitor Paredes", pos: 'DC', age: 26, rating: 81, starter: true }, { name: "Yeray \u00c1lvarez", pos: 'DC', age: 31, rating: 80, starter: false }, { name: "Unai N\u00fa\u00f1ez", pos: 'DC', age: 29, rating: 77, starter: false }, { name: "Andoni Gorosabel", pos: 'DL', age: 30, rating: 78, starter: true }, { name: "Yuri Berchiche", pos: 'DL', age: 36, rating: 78, starter: true }, { name: "Oihan Sancet", pos: 'MO', age: 26, rating: 85, starter: true }, { name: "Mikel Jauregizar", pos: 'MC', age: 23, rating: 82, starter: true }, { name: "Be\u00f1at Prados", pos: 'MC', age: 25, rating: 80, starter: false }, { name: "I\u00f1igo Ruiz de Galarreta", pos: 'MC', age: 33, rating: 79, starter: false }, { name: "Nico Williams", pos: 'AIL', age: 24, rating: 87, starter: true }, { name: "I\u00f1aki Williams", pos: 'AIL', age: 32, rating: 83, starter: false }, { name: "\u00c1lex Berenguer", pos: 'AIL', age: 31, rating: 80, starter: true }, { name: "Gorka Guruzeta", pos: 'BU', age: 30, rating: 80, starter: true }, { name: "Maroan Sannadi", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "\u00c1lvaro Djal\u00f3", pos: 'AIL', age: 27, rating: 78, starter: true }, { name: "Adama Boiro", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "\u00cd\u00f1igo Lekue", pos: 'DL', age: 33, rating: 76, starter: false }, { name: "Unai G\u00f3mez", pos: 'MO', age: 23, rating: 78, starter: false }, { name: "Peio Canales", pos: 'MO', age: 21, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'vil', tmId: 1050, name: "Villarreal CF", short: 'VIL', primary: '#FFE667', secondary: '#005187',
+        players: [
+          { name: "Luiz J\u00fanior", pos: 'G', age: 25, rating: 80, starter: true }, { name: "Diego Conde", pos: 'G', age: 28, rating: 78, starter: false }, { name: "Logan Costa", pos: 'DC', age: 25, rating: 81, starter: true }, { name: "Willy Kambwala", pos: 'DC', age: 22, rating: 78, starter: true }, { name: "Juan Foyth", pos: 'DL', age: 28, rating: 81, starter: false }, { name: "Sergi Cardona", pos: 'DL', age: 27, rating: 80, starter: false }, { name: "Dani Parejo", pos: 'MC', age: 37, rating: 80, starter: true }, { name: "Santi Comesa\u00f1a", pos: 'MC', age: 30, rating: 79, starter: true }, { name: "Pape Gueye", pos: 'MC', age: 27, rating: 80, starter: true }, { name: "Alberto Moleiro", pos: 'MO', age: 23, rating: 82, starter: true }, { name: "Tajon Buchanan", pos: 'AIL', age: 27, rating: 79, starter: false }, { name: "Ilias Akhomach", pos: 'AIL', age: 22, rating: 79, starter: false }, { name: "Ayoze P\u00e9rez", pos: 'BU', age: 33, rating: 82, starter: true }, { name: "Gerard Moreno", pos: 'BU', age: 34, rating: 82, starter: false }, { name: "Thierno Barry", pos: 'BU', age: 24, rating: 81, starter: true }, { name: "Nicolas P\u00e9p\u00e9", pos: 'AIL', age: 31, rating: 80, starter: true }, { name: "Rafa Mar\u00edn", pos: 'DC', age: 24, rating: 78, starter: false }, { name: "Alfonso Pedraza", pos: 'DL', age: 30, rating: 78, starter: true }, { name: "Pau Navarro", pos: 'DC', age: 21, rating: 76, starter: false }, { name: "Denis Su\u00e1rez", pos: 'MC', age: 32, rating: 76, starter: false }, { name: "Etta Eyong", pos: 'BU', age: 23, rating: 78, starter: false }, { name: "Arnau Tenas", pos: 'G', age: 25, rating: 77, starter: false }
+        ]
+      },
+      {
+        id: 'bet', tmId: 150, name: "Real Betis", short: 'BET', primary: '#00954C', secondary: '#FFFFFF',
+        players: [
+          { name: "\u00c1lvaro Valles", pos: 'G', age: 29, rating: 80, starter: true }, { name: "Adri\u00e1n", pos: 'G', age: 39, rating: 75, starter: false }, { name: "Natan", pos: 'DC', age: 25, rating: 80, starter: true }, { name: "Diego Llorente", pos: 'DC', age: 33, rating: 80, starter: true }, { name: "Marc Bartra", pos: 'DC', age: 35, rating: 78, starter: false }, { name: "H\u00e9ctor Beller\u00edn", pos: 'DL', age: 31, rating: 78, starter: false }, { name: "Romain Perraud", pos: 'DL', age: 29, rating: 78, starter: true }, { name: "Johnny", pos: 'MC', age: 25, rating: 81, starter: true }, { name: "Pablo Fornals", pos: 'MO', age: 30, rating: 80, starter: true }, { name: "Giovani Lo Celso", pos: 'MO', age: 30, rating: 83, starter: true }, { name: "Isco", pos: 'MO', age: 34, rating: 84, starter: false }, { name: "Antony", pos: 'AIL', age: 26, rating: 82, starter: false }, { name: "Abde Ezzalzouli", pos: 'AIL', age: 24, rating: 80, starter: true }, { name: "Cucho Hern\u00e1ndez", pos: 'BU', age: 27, rating: 82, starter: false }, { name: "C\u00e9dric Bakambu", pos: 'BU', age: 35, rating: 77, starter: true }, { name: "Sergi Altimira", pos: 'MC', age: 25, rating: 79, starter: true }, { name: "Marc Roca", pos: 'MC', age: 29, rating: 79, starter: false }, { name: "Aitor Ruibal", pos: 'DL', age: 30, rating: 77, starter: true }, { name: "Ricardo Rodr\u00edguez", pos: 'DL', age: 34, rating: 76, starter: false }, { name: "Pablo Garc\u00eda", pos: 'AIL', age: 20, rating: 76, starter: false }, { name: "Chimy \u00c1vila", pos: 'BU', age: 32, rating: 77, starter: false }, { name: "Pau L\u00f3pez", pos: 'G', age: 31, rating: 78, starter: false }
+        ]
+      },
+      {
+        id: 'rso', tmId: 681, name: "Real Sociedad", short: 'RSO', primary: '#0067B1', secondary: '#FFFFFF',
+        players: [
+          { name: "\u00c1lex Remiro", pos: 'G', age: 31, rating: 84, starter: true }, { name: "Unai Marrero", pos: 'G', age: 25, rating: 75, starter: false }, { name: "Igor Zubeldia", pos: 'DC', age: 29, rating: 81, starter: true }, { name: "Jon Pacheco", pos: 'DC', age: 25, rating: 79, starter: true }, { name: "Aritz Elustondo", pos: 'DC', age: 32, rating: 78, starter: false }, { name: "Jon Aramburu", pos: 'DL', age: 24, rating: 80, starter: false }, { name: "Aihen Mu\u00f1oz", pos: 'DL', age: 29, rating: 78, starter: true }, { name: "Brais M\u00e9ndez", pos: 'MO', age: 29, rating: 82, starter: true }, { name: "Luka Su\u010di\u0107", pos: 'MC', age: 24, rating: 81, starter: true }, { name: "Pablo Mar\u00edn", pos: 'MC', age: 23, rating: 78, starter: true }, { name: "Be\u00f1at Turrientes", pos: 'MC', age: 24, rating: 79, starter: false }, { name: "Takefusa Kubo", pos: 'AIL', age: 25, rating: 85, starter: false }, { name: "Ander Barrenetxea", pos: 'AIL', age: 24, rating: 80, starter: true }, { name: "Mikel Oyarzabal", pos: 'BU', age: 29, rating: 84, starter: false }, { name: "Orri \u00d3skarsson", pos: 'BU', age: 22, rating: 79, starter: true }, { name: "Sergio G\u00f3mez", pos: 'DL', age: 26, rating: 80, starter: true }, { name: "Jon Gorrotxategi", pos: 'MC', age: 24, rating: 78, starter: false }, { name: "Arsen Zakharyan", pos: 'MO', age: 23, rating: 78, starter: true }, { name: "Carlos Soler", pos: 'MC', age: 29, rating: 80, starter: false }, { name: "Hamari Traor\u00e9", pos: 'DL', age: 34, rating: 77, starter: false }, { name: "Jon Karrikaburu", pos: 'BU', age: 24, rating: 76, starter: false }, { name: "Javi L\u00f3pez", pos: 'DL', age: 24, rating: 78, starter: false }
+        ]
+      },
+      {
+        id: 'sev', tmId: 368, name: "Sevilla FC", short: 'SEV', primary: '#D60B2B', secondary: '#FFFFFF',
+        players: [
+          { name: "\u00d8rjan Nyland", pos: 'G', age: 36, rating: 78, starter: true }, { name: "Odysseas Vlachodimos", pos: 'G', age: 32, rating: 79, starter: false }, { name: "Lo\u00efc Bad\u00e9", pos: 'DC', age: 26, rating: 82, starter: true }, { name: "Tanguy Nianzou", pos: 'DC', age: 24, rating: 77, starter: true }, { name: "Marcao", pos: 'DC', age: 30, rating: 77, starter: false }, { name: "Jos\u00e9 \u00c1ngel Carmona", pos: 'DL', age: 24, rating: 79, starter: false }, { name: "Adri\u00e0 Pedrosa", pos: 'DL', age: 28, rating: 78, starter: true }, { name: "Lucien Agoum\u00e9", pos: 'MC', age: 24, rating: 79, starter: true }, { name: "Djibril Sow", pos: 'MC', age: 29, rating: 79, starter: true }, { name: "Batista Mendy", pos: 'MC', age: 26, rating: 79, starter: true }, { name: "Peque Fern\u00e1ndez", pos: 'MO', age: 24, rating: 78, starter: false }, { name: "Dodi Luk\u00e9bakio", pos: 'AIL', age: 29, rating: 82, starter: false }, { name: "Chidera Ejuke", pos: 'AIL', age: 28, rating: 78, starter: true }, { name: "Rub\u00e9n Vargas", pos: 'AIL', age: 28, rating: 79, starter: false }, { name: "Isaac Romero", pos: 'BU', age: 26, rating: 79, starter: true }, { name: "Akor Adams", pos: 'BU', age: 26, rating: 78, starter: true }, { name: "Juanlu S\u00e1nchez", pos: 'DL', age: 23, rating: 80, starter: false }, { name: "Kike Salas", pos: 'DC', age: 24, rating: 78, starter: true }, { name: "Nemanja Gudelj", pos: 'MC', age: 35, rating: 77, starter: false }, { name: "Alfon Gonz\u00e1lez", pos: 'AIL', age: 27, rating: 77, starter: false }, { name: "Gabriel Suazo", pos: 'DL', age: 29, rating: 78, starter: false }, { name: "\u00c1lvaro Fern\u00e1ndez", pos: 'G', age: 28, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'val', tmId: 1049, name: "Valencia CF", short: 'VAL', primary: '#FFDF00', secondary: '#000000',
+        players: [
+          { name: "Julen Agirrezabala", pos: 'G', age: 25, rating: 80, starter: true }, { name: "Stole Dimitrievski", pos: 'G', age: 32, rating: 78, starter: false }, { name: "Cristhian Mosquera", pos: 'DC', age: 22, rating: 82, starter: true }, { name: "C\u00e9sar T\u00e1rrega", pos: 'DC', age: 24, rating: 79, starter: true }, { name: "Mouctar Diakhaby", pos: 'DC', age: 29, rating: 78, starter: false }, { name: "Thierry Correia", pos: 'DL', age: 27, rating: 79, starter: false }, { name: "Jos\u00e9 Gay\u00e0", pos: 'DL', age: 31, rating: 81, starter: true }, { name: "Pepelu", pos: 'MC', age: 28, rating: 81, starter: true }, { name: "Javi Guerra", pos: 'MC', age: 23, rating: 82, starter: true }, { name: "Andr\u00e9 Almeida", pos: 'MO', age: 26, rating: 79, starter: true }, { name: "Diego L\u00f3pez", pos: 'AIL', age: 24, rating: 80, starter: false }, { name: "Luis Rioja", pos: 'AIL', age: 33, rating: 77, starter: false }, { name: "Hugo Duro", pos: 'BU', age: 27, rating: 80, starter: true }, { name: "Umar Sadiq", pos: 'BU', age: 29, rating: 77, starter: false }, { name: "Arnaut Danjuma", pos: 'AIL', age: 29, rating: 79, starter: true }, { name: "Dimitri Foulquier", pos: 'DL', age: 33, rating: 76, starter: true }, { name: "Jes\u00fas V\u00e1zquez", pos: 'DL', age: 23, rating: 76, starter: false }, { name: "Filip Ugrini\u0107", pos: 'MC', age: 27, rating: 78, starter: true }, { name: "Baptiste Santamaria", pos: 'MC', age: 31, rating: 78, starter: false }, { name: "Lucas Beltr\u00e1n", pos: 'BU', age: 25, rating: 79, starter: false }, { name: "Copete", pos: 'DC', age: 27, rating: 77, starter: false }, { name: "Cristian Rivero", pos: 'G', age: 28, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'cel', tmId: 940, name: "Celta Vigo", short: 'CEL', primary: '#8AC3EE', secondary: '#FFFFFF',
+        players: [
+          { name: "Ionu\u021b Radu", pos: 'G', age: 29, rating: 78, starter: true }, { name: "Iv\u00e1n Villar", pos: 'G', age: 29, rating: 75, starter: false }, { name: "Carl Starfelt", pos: 'DC', age: 31, rating: 78, starter: true }, { name: "Marcos Alonso", pos: 'DC', age: 35, rating: 77, starter: true }, { name: "Javi Rodr\u00edguez", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "\u00d3scar Mingueza", pos: 'DL', age: 27, rating: 81, starter: false }, { name: "Sergio Carreira", pos: 'DL', age: 26, rating: 77, starter: true }, { name: "Ilaix Moriba", pos: 'MC', age: 23, rating: 79, starter: true }, { name: "Fran Beltr\u00e1n", pos: 'MC', age: 27, rating: 79, starter: true }, { name: "Hugo Sotelo", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Williot Swedberg", pos: 'MO', age: 22, rating: 79, starter: false }, { name: "Iago Aspas", pos: 'BU', age: 39, rating: 81, starter: false }, { name: "Borja Iglesias", pos: 'BU', age: 33, rating: 79, starter: true }, { name: "Bryan Zaragoza", pos: 'AIL', age: 25, rating: 80, starter: false }, { name: "Pablo Dur\u00e1n", pos: 'AIL', age: 25, rating: 77, starter: true }, { name: "Ferran Jutgl\u00e0", pos: 'BU', age: 27, rating: 78, starter: true }, { name: "Mihailo Risti\u0107", pos: 'DL', age: 31, rating: 75, starter: false }, { name: "Carlos Dom\u00ednguez", pos: 'DC', age: 25, rating: 76, starter: true }, { name: "Dami\u00e1n Rodr\u00edguez", pos: 'MC', age: 23, rating: 77, starter: false }, { name: "Jones El-Abdellaoui", pos: 'AIL', age: 20, rating: 76, starter: false }, { name: "Yoel Lago", pos: 'DC', age: 22, rating: 75, starter: false }, { name: "Marc Vidal", pos: 'G', age: 26, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'osa', tmId: 331, name: "CA Osasuna", short: 'OSA', primary: '#D91A21', secondary: '#0A2540',
+        players: [
+          { name: "Sergio Herrera", pos: 'G', age: 33, rating: 80, starter: true }, { name: "Aitor Fern\u00e1ndez", pos: 'G', age: 35, rating: 76, starter: false }, { name: "Alejandro Catena", pos: 'DC', age: 32, rating: 78, starter: true }, { name: "Flavien Boyomo", pos: 'DC', age: 25, rating: 80, starter: true }, { name: "Jorge Herrando", pos: 'DC', age: 25, rating: 77, starter: false }, { name: "Jes\u00fas Areso", pos: 'DL', age: 27, rating: 79, starter: false }, { name: "Abel Bretones", pos: 'DL', age: 26, rating: 78, starter: true }, { name: "Lucas Torr\u00f3", pos: 'MC', age: 32, rating: 79, starter: true }, { name: "Jon Moncayola", pos: 'MC', age: 28, rating: 79, starter: true }, { name: "Aimar Oroz", pos: 'MO', age: 25, rating: 81, starter: true }, { name: "Moi G\u00f3mez", pos: 'MO', age: 32, rating: 77, starter: false }, { name: "Rub\u00e9n Garc\u00eda", pos: 'AIL', age: 33, rating: 77, starter: false }, { name: "V\u00edctor Mu\u00f1oz", pos: 'AIL', age: 23, rating: 78, starter: true }, { name: "Ante Budimir", pos: 'BU', age: 35, rating: 82, starter: false }, { name: "Ra\u00fal Garc\u00eda", pos: 'BU', age: 26, rating: 77, starter: true }, { name: "Iker Mu\u00f1oz", pos: 'MC', age: 24, rating: 77, starter: true }, { name: "Valentin Rosier", pos: 'DL', age: 30, rating: 77, starter: false }, { name: "Juan Cruz", pos: 'DC', age: 34, rating: 76, starter: true }, { name: "Kike Barja", pos: 'AIL', age: 29, rating: 76, starter: false }, { name: "Iker Benito", pos: 'AIL', age: 24, rating: 75, starter: false }, { name: "Asier Osambela", pos: 'MC', age: 22, rating: 74, starter: false }, { name: "Dimitrios Stamatakis", pos: 'G', age: 23, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'get', tmId: 3709, name: "Getafe CF", short: 'GET', primary: '#005999', secondary: '#FFFFFF',
+        players: [
+          { name: "David Soria", pos: 'G', age: 33, rating: 80, starter: true }, { name: "Ji\u0159\u00ed Let\u00e1\u010dek", pos: 'G', age: 27, rating: 75, starter: false }, { name: "Djen\u00e9", pos: 'DC', age: 34, rating: 79, starter: true }, { name: "Domingos Duarte", pos: 'DC', age: 31, rating: 77, starter: true }, { name: "Abdel Abqar", pos: 'DC', age: 27, rating: 78, starter: false }, { name: "Juan Iglesias", pos: 'DL', age: 28, rating: 77, starter: false }, { name: "Diego Rico", pos: 'DL', age: 33, rating: 77, starter: true }, { name: "Luis Milla", pos: 'MC', age: 32, rating: 80, starter: true }, { name: "Mauro Arambarri", pos: 'MC', age: 31, rating: 80, starter: true }, { name: "Mario Mart\u00edn", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Christantus Uche", pos: 'MO', age: 23, rating: 79, starter: false }, { name: "\u00c1lex Sancris", pos: 'AIL', age: 29, rating: 76, starter: false }, { name: "Adri\u00e1n Liso", pos: 'AIL', age: 21, rating: 77, starter: true }, { name: "Borja Mayoral", pos: 'BU', age: 29, rating: 80, starter: false }, { name: "Juanmi", pos: 'BU', age: 33, rating: 76, starter: true }, { name: "Davinchi", pos: 'DL', age: 19, rating: 75, starter: true }, { name: "Kiko Femen\u00eda", pos: 'DL', age: 35, rating: 75, starter: false }, { name: "Yvan Neyou", pos: 'MC', age: 29, rating: 76, starter: true }, { name: "Javi Mu\u00f1oz", pos: 'MC', age: 31, rating: 76, starter: false }, { name: "Coba da Costa", pos: 'AIL', age: 24, rating: 76, starter: false }, { name: "Juan Berrocal", pos: 'DC', age: 27, rating: 75, starter: false }, { name: "Diego Ferrer", pos: 'G', age: 20, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'ray', tmId: 367, name: "Rayo Vallecano", short: 'RAY', primary: '#FFFFFF', secondary: '#E53027',
+        players: [
+          { name: "Augusto Batalla", pos: 'G', age: 30, rating: 79, starter: true }, { name: "Dani C\u00e1rdenas", pos: 'G', age: 29, rating: 76, starter: false }, { name: "Florian Lejeune", pos: 'DC', age: 35, rating: 79, starter: true }, { name: "Abdul Mumin", pos: 'DC', age: 28, rating: 78, starter: true }, { name: "Luiz Felipe", pos: 'DC', age: 29, rating: 78, starter: false }, { name: "Andrei Ra\u021biu", pos: 'DL', age: 28, rating: 80, starter: false }, { name: "Pep Chavarr\u00eda", pos: 'DL', age: 28, rating: 77, starter: true }, { name: "Path\u00e9 Ciss", pos: 'MC', age: 32, rating: 78, starter: true }, { name: "Unai L\u00f3pez", pos: 'MC', age: 31, rating: 78, starter: true }, { name: "Pedro D\u00edaz", pos: 'MC', age: 28, rating: 78, starter: true }, { name: "Isi Palaz\u00f3n", pos: 'MO', age: 31, rating: 81, starter: false }, { name: "\u00c1lvaro Garc\u00eda", pos: 'AIL', age: 34, rating: 79, starter: false }, { name: "Jorge de Frutos", pos: 'AIL', age: 29, rating: 79, starter: true }, { name: "Sergio Camello", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "Alem\u00e3o", pos: 'BU', age: 28, rating: 77, starter: true }, { name: "Iv\u00e1n Balliu", pos: 'DL', age: 34, rating: 76, starter: true }, { name: "Pacha Espino", pos: 'DL', age: 34, rating: 76, starter: false }, { name: "\u00d3scar Valent\u00edn", pos: 'MC', age: 32, rating: 77, starter: true }, { name: "Gerard Gumbau", pos: 'MC', age: 31, rating: 76, starter: false }, { name: "Fran P\u00e9rez", pos: 'AIL', age: 24, rating: 77, starter: false }, { name: "Nobel Mendy", pos: 'DC', age: 22, rating: 77, starter: false }, { name: "Randy Nteka", pos: 'BU', age: 28, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'esp', tmId: 714, name: "RCD Espanyol", short: 'ESP', primary: '#007FC8', secondary: '#FFFFFF',
+        players: [
+          { name: "Marko Dmitrovi\u0107", pos: 'G', age: 34, rating: 78, starter: true }, { name: "\u00c1ngel Fortu\u00f1o", pos: 'G', age: 25, rating: 74, starter: false }, { name: "Leandro Cabrera", pos: 'DC', age: 35, rating: 78, starter: true }, { name: "Marash Kumbulla", pos: 'DC', age: 26, rating: 78, starter: true }, { name: "Fernando Calero", pos: 'DC', age: 31, rating: 76, starter: false }, { name: "Omar El Hilali", pos: 'DL', age: 23, rating: 79, starter: false }, { name: "Carlos Romero", pos: 'DL', age: 25, rating: 78, starter: true }, { name: "Pol Lozano", pos: 'MC', age: 27, rating: 78, starter: true }, { name: "Urko Gonz\u00e1lez", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Edu Exp\u00f3sito", pos: 'MO', age: 30, rating: 78, starter: true }, { name: "Javi Puado", pos: 'AIL', age: 28, rating: 80, starter: false }, { name: "Tyrhys Dolan", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Roberto Fern\u00e1ndez", pos: 'BU', age: 24, rating: 78, starter: true }, { name: "Kike Garc\u00eda", pos: 'BU', age: 36, rating: 76, starter: false }, { name: "Pere Milla", pos: 'AIL', age: 34, rating: 76, starter: true }, { name: "Clemens Riedel", pos: 'DC', age: 23, rating: 76, starter: true }, { name: "Charles Pickel", pos: 'MC', age: 29, rating: 76, starter: false }, { name: "Luca Koleosho", pos: 'AIL', age: 22, rating: 77, starter: true }, { name: "Rub\u00e9n S\u00e1nchez", pos: 'DL', age: 25, rating: 75, starter: false }, { name: "Jos\u00e9 Salinas", pos: 'DL', age: 26, rating: 76, starter: false }, { name: "Ramon Terrats", pos: 'MC', age: 26, rating: 77, starter: false }, { name: "Pol Trist\u00e1n", pos: 'G', age: 24, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'ala', tmId: 1108, name: "Deportivo Alav\u00e9s", short: 'ALA', primary: '#0056A3', secondary: '#FFFFFF',
+        players: [
+          { name: "Antonio Sivera", pos: 'G', age: 30, rating: 79, starter: true }, { name: "Ra\u00fal Fern\u00e1ndez", pos: 'G', age: 38, rating: 73, starter: false }, { name: "Abdel Abqar", pos: 'DC', age: 27, rating: 78, starter: true }, { name: "Facundo Garc\u00e9s", pos: 'DC', age: 27, rating: 77, starter: true }, { name: "Jon Pacheco", pos: 'DC', age: 25, rating: 78, starter: false }, { name: "Nahuel Tenaglia", pos: 'DL', age: 30, rating: 78, starter: false }, { name: "Yusi", pos: 'DL', age: 21, rating: 76, starter: true }, { name: "Antonio Blanco", pos: 'MC', age: 26, rating: 79, starter: true }, { name: "Jon Guridi", pos: 'MO', age: 31, rating: 78, starter: true }, { name: "Ander Guevara", pos: 'MC', age: 29, rating: 78, starter: true }, { name: "Carlos Vicente", pos: 'AIL', age: 27, rating: 80, starter: false }, { name: "Carles Ale\u00f1\u00e1", pos: 'MO', age: 28, rating: 77, starter: false }, { name: "Toni Mart\u00ednez", pos: 'BU', age: 29, rating: 78, starter: true }, { name: "Lucas Boy\u00e9", pos: 'BU', age: 30, rating: 78, starter: false }, { name: "Mariano D\u00edaz", pos: 'BU', age: 33, rating: 75, starter: true }, { name: "V\u00edctor Parada", pos: 'DL', age: 24, rating: 75, starter: true }, { name: "Jonny Otto", pos: 'DL', age: 32, rating: 76, starter: false }, { name: "Pablo Ib\u00e1\u00f1ez", pos: 'MC', age: 28, rating: 77, starter: true }, { name: "Denis Su\u00e1rez", pos: 'MC', age: 32, rating: 76, starter: false }, { name: "Calebe", pos: 'AIL', age: 26, rating: 76, starter: false }, { name: "Moussa Diarra", pos: 'DC', age: 26, rating: 76, starter: false }, { name: "Adri\u00e1n Rodr\u00edguez", pos: 'G', age: 25, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'elc', tmId: 1531, name: "Elche CF", short: 'ELC', primary: '#008A45', secondary: '#FFFFFF',
+        players: [
+          { name: "Mat\u00edas Dituro", pos: 'G', age: 39, rating: 75, starter: true }, { name: "I\u00f1aki Pe\u00f1a", pos: 'G', age: 27, rating: 79, starter: false }, { name: "David Affengruber", pos: 'DC', age: 25, rating: 78, starter: true }, { name: "Pedro Bigas", pos: 'DC', age: 36, rating: 76, starter: true }, { name: "V\u00edctor Chust", pos: 'DC', age: 26, rating: 77, starter: false }, { name: "\u00c1lvaro N\u00fa\u00f1ez", pos: 'DL', age: 26, rating: 76, starter: false }, { name: "Adri\u00e0 Pedrosa", pos: 'DL', age: 28, rating: 77, starter: true }, { name: "Aleix Febas", pos: 'MC', age: 30, rating: 78, starter: true }, { name: "Marc Aguado", pos: 'MC', age: 26, rating: 77, starter: true }, { name: "Rodrigo Mendoza", pos: 'MO', age: 21, rating: 78, starter: true }, { name: "Germ\u00e1n Valera", pos: 'AIL', age: 24, rating: 77, starter: false }, { name: "Josan", pos: 'AIL', age: 36, rating: 75, starter: false }, { name: "Rafa Mir", pos: 'BU', age: 29, rating: 78, starter: true }, { name: "\u00c1lvaro Rodr\u00edguez", pos: 'BU', age: 22, rating: 77, starter: false }, { name: "Andr\u00e9 Silva", pos: 'BU', age: 31, rating: 78, starter: true }, { name: "Bambo Diaby", pos: 'DC', age: 28, rating: 75, starter: true }, { name: "John Donald", pos: 'MC', age: 26, rating: 75, starter: false }, { name: "Martim Neto", pos: 'MC', age: 23, rating: 76, starter: true }, { name: "Yago Santiago", pos: 'AIL', age: 23, rating: 76, starter: false }, { name: "H\u00e9ctor Fort", pos: 'DL', age: 20, rating: 77, starter: false }, { name: "Federico Redondo", pos: 'MC', age: 23, rating: 77, starter: false }, { name: "Alejandro Iturbe", pos: 'G', age: 23, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'lev', tmId: 3368, name: "Levante UD", short: 'LEV', primary: '#004B87', secondary: '#B5121B',
+        players: [
+          { name: "Mathew Ryan", pos: 'G', age: 34, rating: 78, starter: true }, { name: "Pablo Campos", pos: 'G', age: 24, rating: 75, starter: false }, { name: "Unai Elgezabal", pos: 'DC', age: 33, rating: 76, starter: true }, { name: "Adri\u00e1n de la Fuente", pos: 'DC', age: 27, rating: 77, starter: true }, { name: "Mat\u00edas Moreno", pos: 'DC', age: 23, rating: 77, starter: false }, { name: "Jeremy Toljan", pos: 'DL', age: 32, rating: 76, starter: false }, { name: "Manu S\u00e1nchez", pos: 'DL', age: 26, rating: 77, starter: true }, { name: "Oriol Rey", pos: 'MC', age: 28, rating: 77, starter: true }, { name: "Unai Vencedor", pos: 'MC', age: 26, rating: 77, starter: true }, { name: "Jon Ander Olasagasti", pos: 'MC', age: 26, rating: 77, starter: true }, { name: "Carlos \u00c1lvarez", pos: 'MO', age: 23, rating: 80, starter: false }, { name: "Roger Brugu\u00e9", pos: 'AIL', age: 30, rating: 77, starter: false }, { name: "Iv\u00e1n Romero", pos: 'BU', age: 25, rating: 77, starter: true }, { name: "Etta Eyong", pos: 'BU', age: 23, rating: 78, starter: false }, { name: "Jos\u00e9 Luis Morales", pos: 'BU', age: 39, rating: 75, starter: true }, { name: "Diego Pamp\u00edn", pos: 'DL', age: 26, rating: 75, starter: true }, { name: "Alan Matturro", pos: 'DC', age: 22, rating: 77, starter: false }, { name: "Kervin Arriaga", pos: 'MC', age: 28, rating: 76, starter: true }, { name: "Iker Losada", pos: 'MO', age: 25, rating: 76, starter: false }, { name: "V\u00edctor Garc\u00eda", pos: 'DL', age: 29, rating: 75, starter: false }, { name: "Goduine Koyalipou", pos: 'BU', age: 26, rating: 76, starter: false }, { name: "Primo", pos: 'G', age: 22, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'dep', tmId: 897, name: "Deportivo La Coru\u00f1a", short: 'DEP', primary: '#0056A3', secondary: '#FFFFFF',
+        players: [
+          { name: "Helton Leite", pos: 'G', age: 36, rating: 76, starter: true }, { name: "Germ\u00e1n Parre\u00f1o", pos: 'G', age: 33, rating: 74, starter: false }, { name: "Pablo V\u00e1zquez", pos: 'DC', age: 32, rating: 76, starter: true }, { name: "Dani Barcia", pos: 'DC', age: 23, rating: 77, starter: true }, { name: "Lucas Noubi", pos: 'DC', age: 21, rating: 76, starter: false }, { name: "Ximo Navarro", pos: 'DL', age: 36, rating: 75, starter: false }, { name: "Sergio Escudero", pos: 'DL', age: 37, rating: 75, starter: true }, { name: "Jos\u00e9 \u00c1ngel", pos: 'MC', age: 34, rating: 76, starter: true }, { name: "Diego Villares", pos: 'MC', age: 30, rating: 77, starter: true }, { name: "Mario Soriano", pos: 'MO', age: 24, rating: 78, starter: true }, { name: "Yeremay Hern\u00e1ndez", pos: 'AIL', age: 23, rating: 82, starter: false }, { name: "David Mella", pos: 'AIL', age: 21, rating: 80, starter: false }, { name: "Zakaria Eddahchouri", pos: 'BU', age: 26, rating: 77, starter: true }, { name: "Samuele Mulattieri", pos: 'BU', age: 26, rating: 77, starter: false }, { name: "Stoichkov", pos: 'BU', age: 33, rating: 76, starter: true }, { name: "Miguel Loureiro", pos: 'DL', age: 30, rating: 75, starter: true }, { name: "Giacomo Quagliata", pos: 'DL', age: 26, rating: 76, starter: false }, { name: "Charlie Pati\u00f1o", pos: 'MC', age: 23, rating: 77, starter: true }, { name: "Luismi Cruz", pos: 'AIL', age: 25, rating: 77, starter: false }, { name: "Arnau Comas", pos: 'DC', age: 26, rating: 76, starter: false }, { name: "Cristian Herrera", pos: 'AIL', age: 35, rating: 74, starter: false }, { name: "Daniel Bachmann", pos: 'G', age: 32, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'rac', tmId: 630, name: "Racing Santander", short: 'RAC', primary: '#008D4C', secondary: '#FFFFFF',
+        players: [
+          { name: "Jokin Ezkieta", pos: 'G', age: 30, rating: 77, starter: true }, { name: "Plamen Andreev", pos: 'G', age: 22, rating: 75, starter: false }, { name: "Javi Castro", pos: 'DC', age: 26, rating: 76, starter: true }, { name: "Manu Hernando", pos: 'DC', age: 28, rating: 76, starter: true }, { name: "Pablo Ram\u00f3n", pos: 'DC', age: 25, rating: 76, starter: false }, { name: "\u00c1lvaro Mantilla", pos: 'DL', age: 26, rating: 76, starter: false }, { name: "Mario Garc\u00eda", pos: 'DL', age: 23, rating: 76, starter: true }, { name: "Aritz Aldasoro", pos: 'MC', age: 27, rating: 76, starter: true }, { name: "Gustavo Puerta", pos: 'MC', age: 23, rating: 77, starter: true }, { name: "\u00cd\u00f1igo Vicente", pos: 'MO', age: 28, rating: 79, starter: true }, { name: "Pablo Rodr\u00edguez", pos: 'MO', age: 25, rating: 77, starter: false }, { name: "Andr\u00e9s Mart\u00edn", pos: 'AIL', age: 27, rating: 79, starter: false }, { name: "Marco Sangalli", pos: 'AIL', age: 34, rating: 74, starter: true }, { name: "Juan Carlos Arana", pos: 'BU', age: 26, rating: 77, starter: false }, { name: "Asier Villalibre", pos: 'BU', age: 29, rating: 77, starter: true }, { name: "Cl\u00e9ment Michelin", pos: 'DL', age: 29, rating: 76, starter: true }, { name: "Jorge Salinas", pos: 'DL', age: 19, rating: 75, starter: false }, { name: "Maguette Gueye", pos: 'MC', age: 23, rating: 76, starter: true }, { name: "Peio Canales", pos: 'MO', age: 21, rating: 76, starter: false }, { name: "Suleiman Camara", pos: 'AIL', age: 24, rating: 75, starter: false }, { name: "Facundo Gonz\u00e1lez", pos: 'DC', age: 23, rating: 76, starter: false }, { name: "Sim\u00f3n Eriksson", pos: 'G', age: 20, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'mal', tmId: 1084, name: "M\u00e1laga CF", short: 'MAL', primary: '#0086CB', secondary: '#FFFFFF',
+        players: [
+          { name: "Alfonso Herrero", pos: 'G', age: 32, rating: 77, starter: true }, { name: "Carlos L\u00f3pez", pos: 'G', age: 22, rating: 74, starter: false }, { name: "\u00c1lex Pastor", pos: 'DC', age: 27, rating: 76, starter: true }, { name: "Einar Galilea", pos: 'DC', age: 32, rating: 75, starter: true }, { name: "Nelson Monte", pos: 'DC', age: 31, rating: 76, starter: false }, { name: "Carlos Puga", pos: 'DL', age: 26, rating: 75, starter: false }, { name: "V\u00edctor Garc\u00eda", pos: 'DL', age: 32, rating: 75, starter: true }, { name: "Manu Molina", pos: 'MC', age: 35, rating: 75, starter: true }, { name: "Luismi S\u00e1nchez", pos: 'MC', age: 34, rating: 75, starter: true }, { name: "Izan Merino", pos: 'MC', age: 20, rating: 77, starter: true }, { name: "Dani Lorenzo", pos: 'MO', age: 23, rating: 77, starter: false }, { name: "David Larrubia", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Julen Lobete", pos: 'AIL', age: 26, rating: 76, starter: true }, { name: "Chupete", pos: 'BU', age: 22, rating: 77, starter: false }, { name: "Adri\u00e1n Ni\u00f1o", pos: 'BU', age: 22, rating: 77, starter: true }, { name: "Javi Montero", pos: 'DC', age: 27, rating: 76, starter: true }, { name: "Jok\u00edn Gabilondo", pos: 'DL', age: 27, rating: 75, starter: false }, { name: "Aar\u00f3n Ochoa", pos: 'MO', age: 19, rating: 76, starter: true }, { name: "Haitam Abaida", pos: 'AIL', age: 24, rating: 75, starter: false }, { name: "Roko Baturina", pos: 'BU', age: 26, rating: 75, starter: false }, { name: "Eneko Jauregi", pos: 'BU', age: 30, rating: 75, starter: false }, { name: "Diego Murillo", pos: 'DC', age: 25, rating: 75, starter: false }
+        ]
+      }
+    ],
+      seriea: [
+      {
+        id: 'int', tmId: 46, name: "Inter Milan", short: 'INT', primary: '#010E80', secondary: '#000000',
+        players: [
+          { name: "Yann Sommer", pos: 'G', age: 37, rating: 85, starter: true }, { name: "Josep Mart\u00ednez", pos: 'G', age: 28, rating: 80, starter: false }, { name: "Alessandro Bastoni", pos: 'DC', age: 27, rating: 90, starter: true }, { name: "Manuel Akanji", pos: 'DC', age: 31, rating: 85, starter: true }, { name: "Yann Bisseck", pos: 'DC', age: 26, rating: 83, starter: false }, { name: "Francesco Acerbi", pos: 'DC', age: 38, rating: 81, starter: false }, { name: "Denzel Dumfries", pos: 'DL', age: 30, rating: 85, starter: true }, { name: "Federico Dimarco", pos: 'DL', age: 29, rating: 87, starter: true }, { name: "Nicol\u00f2 Barella", pos: 'MC', age: 29, rating: 89, starter: true }, { name: "Hakan \u00c7alhano\u011flu", pos: 'MC', age: 32, rating: 87, starter: true }, { name: "Petar Su\u010di\u0107", pos: 'MC', age: 23, rating: 82, starter: false }, { name: "Davide Frattesi", pos: 'MC', age: 27, rating: 83, starter: false }, { name: "Piotr Zieli\u0144ski", pos: 'MC', age: 32, rating: 82, starter: true }, { name: "Henrikh Mkhitaryan", pos: 'MO', age: 37, rating: 80, starter: false }, { name: "Carlos Augusto", pos: 'DL', age: 27, rating: 82, starter: true }, { name: "Luis Henrique", pos: 'AIL', age: 24, rating: 81, starter: true }, { name: "Lautaro Mart\u00ednez", pos: 'BU', age: 29, rating: 90, starter: false }, { name: "Marcus Thuram", pos: 'BU', age: 29, rating: 87, starter: true }, { name: "Ange-Yoan Bonny", pos: 'BU', age: 23, rating: 81, starter: false }, { name: "Francesco Pio Esposito", pos: 'BU', age: 21, rating: 80, starter: false }, { name: "Stefan de Vrij", pos: 'DC', age: 34, rating: 81, starter: false }, { name: "Matteo Darmian", pos: 'DL', age: 36, rating: 79, starter: false }
+        ]
+      },
+      {
+        id: 'mil', tmId: 5, name: "AC Milan", short: 'MIL', primary: '#FB090B', secondary: '#000000',
+        players: [
+          { name: "Mike Maignan", pos: 'G', age: 31, rating: 87, starter: true }, { name: "Pietro Terracciano", pos: 'G', age: 36, rating: 77, starter: false }, { name: "Fikayo Tomori", pos: 'DC', age: 28, rating: 83, starter: true }, { name: "Strahinja Pavlovi\u0107", pos: 'DC', age: 25, rating: 82, starter: true }, { name: "Matteo Gabbia", pos: 'DC', age: 27, rating: 81, starter: false }, { name: "Koni De Winter", pos: 'DC', age: 24, rating: 80, starter: false }, { name: "Pervis Estupi\u00f1\u00e1n", pos: 'DL', age: 28, rating: 82, starter: true }, { name: "Zachary Athekame", pos: 'DL', age: 21, rating: 78, starter: true }, { name: "Luka Modri\u0107", pos: 'MC', age: 41, rating: 82, starter: true }, { name: "Adrien Rabiot", pos: 'MC', age: 31, rating: 84, starter: true }, { name: "Samuele Ricci", pos: 'MC', age: 25, rating: 83, starter: false }, { name: "Youssouf Fofana", pos: 'MC', age: 27, rating: 83, starter: false }, { name: "Ardon Jashari", pos: 'MC', age: 24, rating: 82, starter: true }, { name: "Ruben Loftus-Cheek", pos: 'MO', age: 30, rating: 81, starter: false }, { name: "Christian Pulisic", pos: 'AIL', age: 28, rating: 86, starter: true }, { name: "Rafael Le\u00e3o", pos: 'AIL', age: 27, rating: 87, starter: true }, { name: "Alexis Saelemaekers", pos: 'AIL', age: 27, rating: 80, starter: false }, { name: "Santiago Gim\u00e9nez", pos: 'BU', age: 25, rating: 83, starter: true }, { name: "Christopher Nkunku", pos: 'BU', age: 29, rating: 83, starter: false }, { name: "Davide Bartesaghi", pos: 'DL', age: 20, rating: 77, starter: false }, { name: "Matteo Odogu", pos: 'DC', age: 20, rating: 75, starter: false }, { name: "Lorenzo Torriani", pos: 'G', age: 21, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'juv', tmId: 506, name: "Juventus", short: 'JUV', primary: '#FFFFFF', secondary: '#000000',
+        players: [
+          { name: "Michele Di Gregorio", pos: 'G', age: 29, rating: 83, starter: true }, { name: "Mattia Perin", pos: 'G', age: 34, rating: 79, starter: false }, { name: "Bremer", pos: 'DC', age: 29, rating: 87, starter: true }, { name: "Pierre Kalulu", pos: 'DC', age: 26, rating: 83, starter: true }, { name: "Federico Gatti", pos: 'DC', age: 28, rating: 82, starter: false }, { name: "Lloyd Kelly", pos: 'DC', age: 28, rating: 79, starter: false }, { name: "Andrea Cambiaso", pos: 'DL', age: 26, rating: 84, starter: true }, { name: "Juan Cabal", pos: 'DL', age: 25, rating: 79, starter: true }, { name: "Manuel Locatelli", pos: 'MC', age: 28, rating: 83, starter: true }, { name: "Kh\u00e9phren Thuram", pos: 'MC', age: 25, rating: 84, starter: true }, { name: "Teun Koopmeiners", pos: 'MO', age: 28, rating: 84, starter: false }, { name: "Weston McKennie", pos: 'MC', age: 28, rating: 81, starter: false }, { name: "Kenan Y\u0131ld\u0131z", pos: 'AIL', age: 21, rating: 86, starter: true }, { name: "Francisco Concei\u00e7\u00e3o", pos: 'AIL', age: 23, rating: 83, starter: false }, { name: "Edon Zhegrova", pos: 'AIL', age: 27, rating: 82, starter: true }, { name: "Jonathan David", pos: 'BU', age: 26, rating: 85, starter: true }, { name: "Du\u0161an Vlahovi\u0107", pos: 'BU', age: 26, rating: 84, starter: false }, { name: "Lo\u00efs Openda", pos: 'BU', age: 26, rating: 84, starter: true }, { name: "Arkadiusz Milik", pos: 'BU', age: 32, rating: 78, starter: false }, { name: "Jo\u00e3o M\u00e1rio", pos: 'DL', age: 26, rating: 79, starter: false }, { name: "Fabio Miretti", pos: 'MC', age: 23, rating: 78, starter: false }, { name: "Carlo Pinsoglio", pos: 'G', age: 36, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'nap', tmId: 6195, name: "SSC Napoli", short: 'NAP', primary: '#0082CA', secondary: '#FFFFFF',
+        players: [
+          { name: "Alex Meret", pos: 'G', age: 29, rating: 83, starter: true }, { name: "Vanja Milinkovi\u0107-Savi\u0107", pos: 'G', age: 29, rating: 81, starter: false }, { name: "Alessandro Buongiorno", pos: 'DC', age: 27, rating: 86, starter: true }, { name: "Amir Rrahmani", pos: 'DC', age: 32, rating: 82, starter: true }, { name: "Sam Beukema", pos: 'DC', age: 28, rating: 82, starter: false }, { name: "Juan Jesus", pos: 'DC', age: 35, rating: 76, starter: false }, { name: "Giovanni Di Lorenzo", pos: 'DL', age: 33, rating: 82, starter: true }, { name: "Math\u00edas Olivera", pos: 'DL', age: 29, rating: 81, starter: true }, { name: "Stanislav Lobotka", pos: 'MC', age: 32, rating: 84, starter: true }, { name: "Scott McTominay", pos: 'MC', age: 29, rating: 85, starter: true }, { name: "Frank Anguissa", pos: 'MC', age: 31, rating: 83, starter: false }, { name: "Kevin De Bruyne", pos: 'MO', age: 35, rating: 86, starter: false }, { name: "Billy Gilmour", pos: 'MC', age: 25, rating: 80, starter: true }, { name: "Matteo Politano", pos: 'AIL', age: 33, rating: 81, starter: false }, { name: "David Neres", pos: 'AIL', age: 29, rating: 82, starter: true }, { name: "Noa Lang", pos: 'AIL', age: 27, rating: 81, starter: true }, { name: "Romelu Lukaku", pos: 'BU', age: 33, rating: 84, starter: false }, { name: "Rasmus H\u00f8jlund", pos: 'BU', age: 23, rating: 83, starter: true }, { name: "Lorenzo Lucca", pos: 'BU', age: 26, rating: 80, starter: false }, { name: "Leonardo Spinazzola", pos: 'DL', age: 33, rating: 78, starter: false }, { name: "Miguel Guti\u00e9rrez", pos: 'DL', age: 25, rating: 81, starter: false }, { name: "Antonio Vergara", pos: 'MO', age: 23, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'rom', tmId: 12, name: "AS Roma", short: 'ROM', primary: '#8E1F2F', secondary: '#F0BC42',
+        players: [
+          { name: "Mile Svilar", pos: 'G', age: 27, rating: 85, starter: true }, { name: "Pierluigi Gollini", pos: 'G', age: 31, rating: 77, starter: false }, { name: "Evan Ndicka", pos: 'DC', age: 27, rating: 84, starter: true }, { name: "Gianluca Mancini", pos: 'DC', age: 30, rating: 83, starter: true }, { name: "Mario Hermoso", pos: 'DC', age: 31, rating: 80, starter: false }, { name: "Daniele Ghilardi", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Wesley", pos: 'DL', age: 23, rating: 80, starter: true }, { name: "Angeli\u00f1o", pos: 'DL', age: 29, rating: 81, starter: true }, { name: "Manu Kon\u00e9", pos: 'MC', age: 25, rating: 84, starter: true }, { name: "Bryan Cristante", pos: 'MC', age: 31, rating: 80, starter: true }, { name: "Neil El Aynaoui", pos: 'MC', age: 25, rating: 79, starter: false }, { name: "Niccol\u00f2 Pisilli", pos: 'MC', age: 22, rating: 79, starter: false }, { name: "Lorenzo Pellegrini", pos: 'MO', age: 30, rating: 82, starter: true }, { name: "Tommaso Baldanzi", pos: 'MO', age: 23, rating: 79, starter: false }, { name: "Paulo Dybala", pos: 'AIL', age: 33, rating: 85, starter: true }, { name: "Mat\u00edas Soul\u00e9", pos: 'AIL', age: 23, rating: 82, starter: true }, { name: "Leon Bailey", pos: 'AIL', age: 29, rating: 81, starter: false }, { name: "Artem Dovbyk", pos: 'BU', age: 29, rating: 83, starter: true }, { name: "Evan Ferguson", pos: 'BU', age: 22, rating: 80, starter: false }, { name: "Kostas Tsimikas", pos: 'DL', age: 30, rating: 79, starter: false }, { name: "Zeki \u00c7elik", pos: 'DL', age: 29, rating: 78, starter: false }, { name: "Devis V\u00e1squez", pos: 'G', age: 28, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'laz', tmId: 398, name: "SS Lazio", short: 'LAZ', primary: '#87D8F7', secondary: '#FFFFFF',
+        players: [
+          { name: "Ivan Provedel", pos: 'G', age: 32, rating: 82, starter: true }, { name: "Christos Mandas", pos: 'G', age: 25, rating: 78, starter: false }, { name: "Mario Gila", pos: 'DC', age: 26, rating: 82, starter: true }, { name: "Alessio Romagnoli", pos: 'DC', age: 31, rating: 81, starter: true }, { name: "Samuel Gigot", pos: 'DC', age: 33, rating: 78, starter: false }, { name: "Adam Maru\u0161i\u0107", pos: 'DL', age: 34, rating: 78, starter: false }, { name: "Nuno Tavares", pos: 'DL', age: 26, rating: 81, starter: true }, { name: "Nicol\u00f2 Rovella", pos: 'MC', age: 24, rating: 83, starter: true }, { name: "Matt\u00e9o Guendouzi", pos: 'MC', age: 27, rating: 83, starter: true }, { name: "Fisayo Dele-Bashiru", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Reda Belahyane", pos: 'MC', age: 22, rating: 78, starter: false }, { name: "Mattia Zaccagni", pos: 'AIL', age: 31, rating: 83, starter: false }, { name: "Gustav Isaksen", pos: 'AIL', age: 25, rating: 80, starter: true }, { name: "Pedro", pos: 'AIL', age: 39, rating: 77, starter: false }, { name: "Taty Castellanos", pos: 'BU', age: 28, rating: 82, starter: true }, { name: "Boulaye Dia", pos: 'BU', age: 30, rating: 80, starter: true }, { name: "Tijjani Noslin", pos: 'BU', age: 27, rating: 78, starter: false }, { name: "Luca Pellegrini", pos: 'DL', age: 27, rating: 78, starter: true }, { name: "Manuel Lazzari", pos: 'DL', age: 33, rating: 77, starter: false }, { name: "Patric", pos: 'DC', age: 33, rating: 77, starter: false }, { name: "Mat\u00edas Vecino", pos: 'MC', age: 35, rating: 77, starter: false }, { name: "Toma Ba\u0161i\u0107", pos: 'MC', age: 29, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'ata', tmId: 800, name: "Atalanta BC", short: 'ATA', primary: '#1E71B8', secondary: '#000000',
+        players: [
+          { name: "Marco Carnesecchi", pos: 'G', age: 26, rating: 84, starter: true }, { name: "Marco Sportiello", pos: 'G', age: 34, rating: 76, starter: false }, { name: "Isak Hien", pos: 'DC', age: 27, rating: 82, starter: true }, { name: "Giorgio Scalvini", pos: 'DC', age: 22, rating: 83, starter: true }, { name: "Odilon Kossounou", pos: 'DC', age: 25, rating: 82, starter: false }, { name: "Berat Djimsiti", pos: 'DC', age: 33, rating: 80, starter: false }, { name: "Raoul Bellanova", pos: 'DL', age: 26, rating: 82, starter: true }, { name: "Nicola Zalewski", pos: 'DL', age: 24, rating: 79, starter: true }, { name: "\u00c9derson", pos: 'MC', age: 27, rating: 85, starter: true }, { name: "Marten de Roon", pos: 'MC', age: 35, rating: 80, starter: true }, { name: "Mario Pa\u0161ali\u0107", pos: 'MO', age: 31, rating: 81, starter: false }, { name: "Lazar Samard\u017ei\u0107", pos: 'MO', age: 24, rating: 81, starter: false }, { name: "Charles De Ketelaere", pos: 'MO', age: 25, rating: 84, starter: true }, { name: "Ademola Lookman", pos: 'AIL', age: 29, rating: 86, starter: false }, { name: "Kamaldeen Sulemana", pos: 'AIL', age: 24, rating: 78, starter: true }, { name: "Gianluca Scamacca", pos: 'BU', age: 27, rating: 83, starter: true }, { name: "Nikola Krstovi\u0107", pos: 'BU', age: 26, rating: 80, starter: false }, { name: "Daniel Maldini", pos: 'MO', age: 25, rating: 78, starter: true }, { name: "Sead Kola\u0161inac", pos: 'DC', age: 33, rating: 79, starter: false }, { name: "Davide Zappacosta", pos: 'DL', age: 34, rating: 78, starter: false }, { name: "Yunus Musah", pos: 'MC', age: 23, rating: 79, starter: false }, { name: "Francesco Rossi", pos: 'G', age: 35, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'fio', tmId: 430, name: "ACF Fiorentina", short: 'FIO', primary: '#482E92', secondary: '#FFFFFF',
+        players: [
+          { name: "David de Gea", pos: 'G', age: 36, rating: 83, starter: true }, { name: "Tommaso Martinelli", pos: 'G', age: 20, rating: 76, starter: false }, { name: "Pietro Comuzzo", pos: 'DC', age: 21, rating: 81, starter: true }, { name: "Marin Pongra\u010di\u0107", pos: 'DC', age: 29, rating: 79, starter: true }, { name: "Luca Ranieri", pos: 'DC', age: 27, rating: 80, starter: false }, { name: "Pablo Mar\u00ed", pos: 'DC', age: 33, rating: 77, starter: false }, { name: "Dod\u00f4", pos: 'DL', age: 28, rating: 82, starter: true }, { name: "Robin Gosens", pos: 'DL', age: 32, rating: 80, starter: true }, { name: "Nicol\u00f2 Fagioli", pos: 'MC', age: 25, rating: 81, starter: true }, { name: "Rolando Mandragora", pos: 'MC', age: 29, rating: 79, starter: true }, { name: "Simon Sohm", pos: 'MC', age: 25, rating: 79, starter: false }, { name: "Cher Ndour", pos: 'MC', age: 22, rating: 77, starter: false }, { name: "Albert Gu\u00f0mundsson", pos: 'MO', age: 29, rating: 82, starter: true }, { name: "Jacopo Fazzini", pos: 'MO', age: 23, rating: 79, starter: false }, { name: "Moise Kean", pos: 'BU', age: 26, rating: 84, starter: true }, { name: "Edin D\u017eeko", pos: 'BU', age: 40, rating: 78, starter: true }, { name: "Roberto Piccoli", pos: 'BU', age: 25, rating: 79, starter: false }, { name: "Tariq Lamptey", pos: 'DL', age: 26, rating: 78, starter: true }, { name: "Fabiano Parisi", pos: 'DL', age: 26, rating: 78, starter: false }, { name: "Hans Nicolussi Caviglia", pos: 'MC', age: 26, rating: 78, starter: false }, { name: "Christian Kouam\u00e9", pos: 'AIL', age: 28, rating: 76, starter: false }, { name: "Oliver Christensen", pos: 'G', age: 27, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'bol', tmId: 1025, name: "Bologna FC", short: 'BOL', primary: '#1A2F48', secondary: '#A21C26',
+        players: [
+          { name: "\u0141ukasz Skorupski", pos: 'G', age: 35, rating: 81, starter: true }, { name: "Federico Ravaglia", pos: 'G', age: 27, rating: 76, starter: false }, { name: "Jhon Lucum\u00ed", pos: 'DC', age: 28, rating: 82, starter: true }, { name: "Torbj\u00f8rn Heggem", pos: 'DC', age: 27, rating: 78, starter: true }, { name: "Nicol\u00f2 Casale", pos: 'DC', age: 28, rating: 78, starter: false }, { name: "Emil Holm", pos: 'DL', age: 26, rating: 79, starter: false }, { name: "Juan Miranda", pos: 'DL', age: 26, rating: 79, starter: true }, { name: "Remo Freuler", pos: 'MC', age: 34, rating: 80, starter: true }, { name: "Lewis Ferguson", pos: 'MC', age: 27, rating: 82, starter: true }, { name: "Tommaso Pobega", pos: 'MC', age: 27, rating: 78, starter: true }, { name: "Giovanni Fabbian", pos: 'MO', age: 23, rating: 79, starter: false }, { name: "Riccardo Orsolini", pos: 'AIL', age: 29, rating: 83, starter: false }, { name: "Nicol\u00f2 Cambiaghi", pos: 'AIL', age: 25, rating: 78, starter: true }, { name: "Federico Bernardeschi", pos: 'AIL', age: 32, rating: 78, starter: false }, { name: "Santiago Castro", pos: 'BU', age: 22, rating: 81, starter: true }, { name: "Thijs Dallinga", pos: 'BU', age: 26, rating: 79, starter: true }, { name: "Ciro Immobile", pos: 'BU', age: 36, rating: 78, starter: false }, { name: "Martin Vit\u00edk", pos: 'DC', age: 23, rating: 79, starter: true }, { name: "Charalampos Lykogiannis", pos: 'DL', age: 33, rating: 76, starter: false }, { name: "Nikola Moro", pos: 'MC', age: 28, rating: 77, starter: false }, { name: "Jonathan Rowe", pos: 'AIL', age: 23, rating: 79, starter: false }, { name: "Massimo Pessina", pos: 'G', age: 18, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'com', tmId: 1047, name: "Como 1907", short: 'COM', primary: '#0056A3', secondary: '#FFFFFF',
+        players: [
+          { name: "Jean Butez", pos: 'G', age: 31, rating: 79, starter: true }, { name: "Mauro Vigorito", pos: 'G', age: 36, rating: 72, starter: false }, { name: "Marc Oliver Kempf", pos: 'DC', age: 31, rating: 78, starter: true }, { name: "Jacobo Ram\u00f3n", pos: 'DC', age: 21, rating: 78, starter: true }, { name: "Diego Carlos", pos: 'DC', age: 33, rating: 79, starter: false }, { name: "\u00c1lex Valle", pos: 'DL', age: 22, rating: 78, starter: false }, { name: "Alberto Moreno", pos: 'DL', age: 34, rating: 76, starter: true }, { name: "M\u00e1ximo Perrone", pos: 'MC', age: 23, rating: 80, starter: true }, { name: "Maxence Caqueret", pos: 'MC', age: 26, rating: 81, starter: true }, { name: "Lucas Da Cunha", pos: 'MC', age: 25, rating: 79, starter: true }, { name: "Nico Paz", pos: 'MO', age: 22, rating: 84, starter: false }, { name: "Martin Baturina", pos: 'MO', age: 23, rating: 82, starter: false }, { name: "Jes\u00fas Rodr\u00edguez", pos: 'AIL', age: 20, rating: 79, starter: true }, { name: "Assane Diao", pos: 'AIL', age: 21, rating: 81, starter: false }, { name: "Jayden Addai", pos: 'AIL', age: 21, rating: 77, starter: true }, { name: "Tasos Douvikas", pos: 'BU', age: 27, rating: 79, starter: true }, { name: "\u00c1lvaro Morata", pos: 'BU', age: 34, rating: 81, starter: false }, { name: "Sergi Roberto", pos: 'MC', age: 34, rating: 77, starter: true }, { name: "Ignace Van der Brempt", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "M\u00ebrgim Vojvoda", pos: 'DL', age: 31, rating: 77, starter: false }, { name: "Nicolas K\u00fchn", pos: 'AIL', age: 26, rating: 79, starter: false }, { name: "Henrik Bj\u00f8rdal", pos: 'MC', age: 29, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'tor', tmId: 416, name: "Torino FC", short: 'TOR', primary: '#8A1E03', secondary: '#FFFFFF',
+        players: [
+          { name: "Franco Israel", pos: 'G', age: 26, rating: 78, starter: true }, { name: "Alberto Paleari", pos: 'G', age: 34, rating: 74, starter: false }, { name: "Sa\u00fal Coco", pos: 'DC', age: 27, rating: 79, starter: true }, { name: "Guillermo Marip\u00e1n", pos: 'DC', age: 32, rating: 79, starter: true }, { name: "Ardian Ismajli", pos: 'DC', age: 30, rating: 78, starter: false }, { name: "Marcus Pedersen", pos: 'DL', age: 26, rating: 77, starter: false }, { name: "Cristiano Biraghi", pos: 'DL', age: 34, rating: 77, starter: true }, { name: "Cesare Casadei", pos: 'MC', age: 23, rating: 79, starter: true }, { name: "Ivan Ili\u0107", pos: 'MC', age: 25, rating: 80, starter: true }, { name: "Kristjan Asllani", pos: 'MC', age: 24, rating: 79, starter: true }, { name: "Nikola Vla\u0161i\u0107", pos: 'MO', age: 29, rating: 80, starter: false }, { name: "Tino Anjorin", pos: 'MO', age: 24, rating: 77, starter: false }, { name: "Cyril Ngonge", pos: 'AIL', age: 26, rating: 79, starter: true }, { name: "Zakaria Aboukhlal", pos: 'AIL', age: 26, rating: 79, starter: false }, { name: "Ch\u00e9 Adams", pos: 'BU', age: 30, rating: 80, starter: true }, { name: "Duv\u00e1n Zapata", pos: 'BU', age: 35, rating: 79, starter: true }, { name: "Giovanni Simeone", pos: 'BU', age: 31, rating: 79, starter: false }, { name: "Valentino Lazaro", pos: 'DL', age: 30, rating: 77, starter: true }, { name: "Gvidas Gineitis", pos: 'MC', age: 22, rating: 77, starter: false }, { name: "Adam Masina", pos: 'DC', age: 32, rating: 76, starter: false }, { name: "Alieu Njie", pos: 'AIL', age: 21, rating: 75, starter: false }, { name: "Mihai Popa", pos: 'G', age: 26, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'udi', tmId: 410, name: "Udinese Calcio", short: 'UDI', primary: '#000000', secondary: '#FFFFFF',
+        players: [
+          { name: "Maduka Okoye", pos: 'G', age: 27, rating: 78, starter: true }, { name: "R\u0103zvan Sava", pos: 'G', age: 24, rating: 75, starter: false }, { name: "Oumar Solet", pos: 'DC', age: 26, rating: 80, starter: true }, { name: "Thomas Kristensen", pos: 'DC', age: 24, rating: 78, starter: true }, { name: "Christian Kabasele", pos: 'DC', age: 35, rating: 76, starter: false }, { name: "Kingsley Ehizibue", pos: 'DL', age: 31, rating: 76, starter: false }, { name: "Hassane Kamara", pos: 'DL', age: 32, rating: 77, starter: true }, { name: "Jesper Karlstr\u00f6m", pos: 'MC', age: 31, rating: 78, starter: true }, { name: "Arthur Atta", pos: 'MC', age: 23, rating: 79, starter: true }, { name: "Sandi Lovri\u0107", pos: 'MC', age: 28, rating: 78, starter: true }, { name: "Jurgen Ekkelenkamp", pos: 'MO', age: 26, rating: 78, starter: false }, { name: "Nicol\u00f2 Zaniolo", pos: 'AIL', age: 27, rating: 80, starter: false }, { name: "Keinan Davis", pos: 'BU', age: 28, rating: 78, starter: true }, { name: "Adam Buksa", pos: 'BU', age: 30, rating: 78, starter: false }, { name: "Iker Bravo", pos: 'BU', age: 21, rating: 76, starter: true }, { name: "Jordan Zemura", pos: 'DL', age: 27, rating: 76, starter: true }, { name: "Nicol\u00f2 Bertola", pos: 'DC', age: 23, rating: 76, starter: false }, { name: "Jakub Piotrowski", pos: 'MC', age: 29, rating: 77, starter: true }, { name: "Oier Zarraga", pos: 'MC', age: 27, rating: 76, starter: false }, { name: "Lennon Miller", pos: 'MC', age: 20, rating: 78, starter: false }, { name: "Vakoun Bayo", pos: 'BU', age: 29, rating: 76, starter: false }, { name: "Daniele Padelli", pos: 'G', age: 41, rating: 70, starter: false }
+        ]
+      },
+      {
+        id: 'gen', tmId: 252, name: "Genoa CFC", short: 'GEN', primary: '#AD1927', secondary: '#00305E',
+        players: [
+          { name: "Nicola Leali", pos: 'G', age: 33, rating: 77, starter: true }, { name: "Benjamin Siegrist", pos: 'G', age: 34, rating: 74, starter: false }, { name: "Johan V\u00e1squez", pos: 'DC', age: 28, rating: 80, starter: true }, { name: "Leo \u00d8stig\u00e5rd", pos: 'DC', age: 27, rating: 78, starter: true }, { name: "Alessandro Marcandalli", pos: 'DC', age: 24, rating: 76, starter: false }, { name: "Brooke Norton-Cuffy", pos: 'DL', age: 22, rating: 78, starter: false }, { name: "Aar\u00f3n Mart\u00edn", pos: 'DL', age: 29, rating: 78, starter: true }, { name: "Morten Frendrup", pos: 'MC', age: 25, rating: 81, starter: true }, { name: "Patrizio Masini", pos: 'MC', age: 25, rating: 77, starter: true }, { name: "Morten Thorsby", pos: 'MC', age: 30, rating: 77, starter: true }, { name: "Ruslan Malinovskyi", pos: 'MO', age: 33, rating: 79, starter: false }, { name: "Valentin Carboni", pos: 'MO', age: 21, rating: 79, starter: false }, { name: "Junior Messias", pos: 'AIL', age: 35, rating: 77, starter: true }, { name: "Maxwel Cornet", pos: 'AIL', age: 30, rating: 77, starter: false }, { name: "Lorenzo Colombo", pos: 'BU', age: 24, rating: 78, starter: true }, { name: "Vitinha", pos: 'BU', age: 26, rating: 78, starter: true }, { name: "Jeff Ekhator", pos: 'BU', age: 20, rating: 76, starter: false }, { name: "Stefano Sabelli", pos: 'DL', age: 33, rating: 75, starter: true }, { name: "Sebastian Otoa", pos: 'DC', age: 22, rating: 76, starter: false }, { name: "Albert Gr\u00f8nb\u00e6k", pos: 'MO', age: 25, rating: 78, starter: false }, { name: "Caleb Ekuban", pos: 'BU', age: 32, rating: 75, starter: false }, { name: "Daniele Sommariva", pos: 'G', age: 29, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'cag', tmId: 1390, name: "Cagliari Calcio", short: 'CAG', primary: '#A50021', secondary: '#002350',
+        players: [
+          { name: "Elia Caprile", pos: 'G', age: 25, rating: 80, starter: true }, { name: "Boris Radunovi\u0107", pos: 'G', age: 30, rating: 75, starter: false }, { name: "Yerry Mina", pos: 'DC', age: 32, rating: 79, starter: true }, { name: "Sebastiano Luperto", pos: 'DC', age: 30, rating: 78, starter: true }, { name: "Gabriele Zappa", pos: 'DL', age: 26, rating: 77, starter: false }, { name: "Adam Obert", pos: 'DC', age: 24, rating: 77, starter: false }, { name: "Riyad Idrissi", pos: 'DL', age: 21, rating: 76, starter: true }, { name: "Matteo Prati", pos: 'MC', age: 22, rating: 78, starter: true }, { name: "Michel Adopo", pos: 'MC', age: 26, rating: 77, starter: true }, { name: "Michael Folorunsho", pos: 'MC', age: 28, rating: 78, starter: true }, { name: "Gianluca Gaetano", pos: 'MO', age: 26, rating: 78, starter: false }, { name: "Zito Luvumbo", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Mattia Felici", pos: 'AIL', age: 25, rating: 76, starter: true }, { name: "Sebastiano Esposito", pos: 'BU', age: 24, rating: 79, starter: false }, { name: "Andrea Belotti", pos: 'BU', age: 32, rating: 77, starter: true }, { name: "Gennaro Borrelli", pos: 'BU', age: 26, rating: 76, starter: true }, { name: "Marco Palestra", pos: 'DL', age: 21, rating: 77, starter: false }, { name: "Alessandro Deiola", pos: 'MC', age: 31, rating: 76, starter: true }, { name: "Luca Mazzitelli", pos: 'MC', age: 31, rating: 76, starter: false }, { name: "Semih K\u0131l\u0131\u00e7soy", pos: 'BU', age: 21, rating: 79, starter: false }, { name: "Juan Rodr\u00edguez", pos: 'DC', age: 21, rating: 75, starter: false }, { name: "Giuseppe Ciocci", pos: 'G', age: 24, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'lec', tmId: 1005, name: "US Lecce", short: 'LEC', primary: '#FFD200', secondary: '#DA291C',
+        players: [
+          { name: "Wladimiro Falcone", pos: 'G', age: 31, rating: 79, starter: true }, { name: "Christian Fr\u00fcchtl", pos: 'G', age: 26, rating: 75, starter: false }, { name: "Kialonda Gaspar", pos: 'DC', age: 29, rating: 78, starter: true }, { name: "Tiago Gabriel", pos: 'DC', age: 21, rating: 76, starter: true }, { name: "Gaby Jean", pos: 'DC', age: 26, rating: 76, starter: false }, { name: "Danilo Veiga", pos: 'DL', age: 24, rating: 76, starter: false }, { name: "Antonino Gallo", pos: 'DL', age: 26, rating: 78, starter: true }, { name: "Ylber Ramadani", pos: 'MC', age: 30, rating: 77, starter: true }, { name: "Medon Berisha", pos: 'MC', age: 23, rating: 77, starter: true }, { name: "Lassana Coulibaly", pos: 'MC', age: 30, rating: 77, starter: true }, { name: "\u00c1lex Sala", pos: 'MC', age: 25, rating: 76, starter: false }, { name: "Tete Morente", pos: 'AIL', age: 29, rating: 77, starter: false }, { name: "Riccardo Sottil", pos: 'AIL', age: 27, rating: 78, starter: true }, { name: "Santiago Pierotti", pos: 'AIL', age: 25, rating: 77, starter: false }, { name: "Nikola \u0160tuli\u0107", pos: 'BU', age: 25, rating: 77, starter: true }, { name: "Francesco Camarda", pos: 'BU', age: 18, rating: 78, starter: true }, { name: "Lameck Banda", pos: 'AIL', age: 25, rating: 77, starter: false }, { name: "Corrie Ndaba", pos: 'DL', age: 26, rating: 75, starter: true }, { name: "Jamil Siebert", pos: 'DC', age: 24, rating: 76, starter: false }, { name: "\u00de\u00f3rir J\u00f3hann Helgason", pos: 'MC', age: 26, rating: 75, starter: false }, { name: "Balthazar Pierret", pos: 'MC', age: 26, rating: 76, starter: false }, { name: "Jasper Samooja", pos: 'G', age: 23, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'par', tmId: 130, name: "Parma Calcio", short: 'PAR', primary: '#FFDD00', secondary: '#003090',
+        players: [
+          { name: "Zion Suzuki", pos: 'G', age: 24, rating: 80, starter: true }, { name: "Edoardo Corvi", pos: 'G', age: 25, rating: 74, starter: false }, { name: "Alessandro Circati", pos: 'DC', age: 23, rating: 79, starter: true }, { name: "Lautaro Valenti", pos: 'DC', age: 27, rating: 77, starter: true }, { name: "Enrico Delprato", pos: 'DL', age: 27, rating: 78, starter: false }, { name: "Emanuele Valeri", pos: 'DL', age: 27, rating: 77, starter: false }, { name: "Mandela Keita", pos: 'MC', age: 24, rating: 78, starter: true }, { name: "Adri\u00e1n Bernab\u00e9", pos: 'MO', age: 25, rating: 80, starter: true }, { name: "Oliver S\u00f8rensen", pos: 'MC', age: 24, rating: 77, starter: true }, { name: "Christian Ord\u00f3\u00f1ez", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Pontus Almqvist", pos: 'AIL', age: 27, rating: 77, starter: false }, { name: "Jacob Ondrejka", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Mateo Pellegrino", pos: 'BU', age: 25, rating: 78, starter: true }, { name: "Patrick Cutrone", pos: 'BU', age: 28, rating: 77, starter: false }, { name: "Matija Frigan", pos: 'BU', age: 23, rating: 77, starter: true }, { name: "Mariano Troilo", pos: 'DC', age: 23, rating: 76, starter: true }, { name: "Sascha Britschgi", pos: 'DL', age: 20, rating: 75, starter: false }, { name: "Nahuel Est\u00e9vez", pos: 'MC', age: 31, rating: 76, starter: true }, { name: "Hernani", pos: 'MC', age: 32, rating: 76, starter: false }, { name: "Gaetano Oristanio", pos: 'MO', age: 24, rating: 78, starter: false }, { name: "Milan \u0110uri\u0107", pos: 'BU', age: 36, rating: 75, starter: false }, { name: "Vicente Guaita", pos: 'G', age: 39, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'sas', tmId: 6574, name: "US Sassuolo", short: 'SAS', primary: '#00A752', secondary: '#000000',
+        players: [
+          { name: "Arijanet Muric", pos: 'G', age: 28, rating: 78, starter: true }, { name: "Stefano Turati", pos: 'G', age: 25, rating: 77, starter: false }, { name: "Tarik Muharemovi\u0107", pos: 'DC', age: 23, rating: 78, starter: true }, { name: "Jay Idzes", pos: 'DC', age: 26, rating: 78, starter: true }, { name: "Sebastian Walukiewicz", pos: 'DC', age: 26, rating: 77, starter: false }, { name: "Josh Doig", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "Woyo Coulibaly", pos: 'DL', age: 27, rating: 76, starter: true }, { name: "Nemanja Mati\u0107", pos: 'MC', age: 38, rating: 77, starter: true }, { name: "Isma\u00ebl Kon\u00e9", pos: 'MC', age: 24, rating: 78, starter: true }, { name: "Kristian Thorstvedt", pos: 'MO', age: 27, rating: 79, starter: true }, { name: "Daniel Boloca", pos: 'MC', age: 27, rating: 77, starter: false }, { name: "Domenico Berardi", pos: 'AIL', age: 32, rating: 82, starter: false }, { name: "Armand Laurient\u00e9", pos: 'AIL', age: 27, rating: 80, starter: true }, { name: "Alieu Fadera", pos: 'AIL', age: 25, rating: 77, starter: false }, { name: "Andrea Pinamonti", pos: 'BU', age: 27, rating: 80, starter: true }, { name: "Walid Cheddira", pos: 'BU', age: 28, rating: 76, starter: true }, { name: "Cristian Volpato", pos: 'MO', age: 23, rating: 77, starter: false }, { name: "Aster Vranckx", pos: 'MC', age: 24, rating: 78, starter: true }, { name: "Filippo Romagna", pos: 'DC', age: 29, rating: 76, starter: false }, { name: "Edoardo Iannoni", pos: 'MC', age: 25, rating: 76, starter: false }, { name: "Luca Moro", pos: 'BU', age: 25, rating: 75, starter: false }, { name: "Giacomo Satalino", pos: 'G', age: 27, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'ven', tmId: 607, name: "Venezia FC", short: 'VEN', primary: '#FF6600', secondary: '#007A33',
+        players: [
+          { name: "Filip Stankovi\u0107", pos: 'G', age: 24, rating: 78, starter: true }, { name: "Jesse Joronen", pos: 'G', age: 33, rating: 76, starter: false }, { name: "Jay Idzes", pos: 'DC', age: 26, rating: 78, starter: true }, { name: "Marin \u0160verko", pos: 'DC', age: 28, rating: 76, starter: true }, { name: "Michael Svoboda", pos: 'DC', age: 28, rating: 76, starter: false }, { name: "Antonio Candela", pos: 'DL', age: 26, rating: 76, starter: false }, { name: "Ridgeciano Haps", pos: 'DL', age: 33, rating: 75, starter: true }, { name: "Hans Nicolussi Caviglia", pos: 'MC', age: 26, rating: 78, starter: true }, { name: "Gianluca Busio", pos: 'MC', age: 24, rating: 78, starter: true }, { name: "Alfred Duncan", pos: 'MC', age: 33, rating: 76, starter: true }, { name: "Gaetano Oristanio", pos: 'MO', age: 24, rating: 78, starter: false }, { name: "John Yeboah", pos: 'AIL', age: 26, rating: 77, starter: false }, { name: "Mikael Egill Ellertsson", pos: 'AIL', age: 24, rating: 76, starter: true }, { name: "Joel Pohjanpalo", pos: 'BU', age: 32, rating: 79, starter: false }, { name: "Christian Gytkj\u00e6r", pos: 'BU', age: 36, rating: 75, starter: true }, { name: "Francesco Zampano", pos: 'DL', age: 33, rating: 75, starter: true }, { name: "Giorgio Altare", pos: 'DC', age: 28, rating: 76, starter: false }, { name: "Issa Doumbia", pos: 'MC', age: 23, rating: 76, starter: true }, { name: "Kike P\u00e9rez", pos: 'MC', age: 29, rating: 76, starter: false }, { name: "Mirko Mari\u0107", pos: 'BU', age: 31, rating: 75, starter: false }, { name: "Daniel Fila", pos: 'BU', age: 24, rating: 76, starter: false }, { name: "Matteo Grandi", pos: 'G', age: 34, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'fro', tmId: 8970, name: "Frosinone Calcio", short: 'FRO', primary: '#FFD200', secondary: '#004B93',
+        players: [
+          { name: "Michele Cerofolini", pos: 'G', age: 27, rating: 76, starter: true }, { name: "Stefano Turati", pos: 'G', age: 25, rating: 77, starter: false }, { name: "Ilario Monterisi", pos: 'DC', age: 24, rating: 76, starter: true }, { name: "Gabriele Calvani", pos: 'DC', age: 22, rating: 75, starter: true }, { name: "Riccardo Marchizza", pos: 'DL', age: 28, rating: 76, starter: false }, { name: "Anthony Oyono", pos: 'DL', age: 25, rating: 75, starter: false }, { name: "Matteo Cichella", pos: 'MC', age: 21, rating: 75, starter: true }, { name: "Francesco Gelli", pos: 'MC', age: 30, rating: 76, starter: true }, { name: "Ebrima Darboe", pos: 'MC', age: 25, rating: 76, starter: true }, { name: "Ilias Koutsoupias", pos: 'MC', age: 25, rating: 75, starter: true }, { name: "Far\u00e8s Ghedjemis", pos: 'AIL', age: 24, rating: 77, starter: false }, { name: "Giorgi Kvernadze", pos: 'AIL', age: 23, rating: 76, starter: false }, { name: "Giuseppe Ambrosino", pos: 'BU', age: 23, rating: 77, starter: true }, { name: "Antonio Raimondo", pos: 'BU', age: 22, rating: 76, starter: false }, { name: "Massimo Zilli", pos: 'BU', age: 24, rating: 75, starter: true }, { name: "Jeremy Oyono", pos: 'DL', age: 25, rating: 75, starter: true }, { name: "Giorgio Cittadini", pos: 'DC', age: 24, rating: 76, starter: false }, { name: "Ben Lhassine Kone", pos: 'MC', age: 26, rating: 75, starter: true }, { name: "Filippo Distefano", pos: 'AIL', age: 23, rating: 76, starter: false }, { name: "Emanuele Pecorino", pos: 'BU', age: 25, rating: 75, starter: false }, { name: "Lorenzo Gori", pos: 'BU', age: 22, rating: 74, starter: false }, { name: "Lorenzo Palmisani", pos: 'G', age: 22, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'mon', tmId: 2919, name: "AC Monza", short: 'MON', primary: '#E30613', secondary: '#FFFFFF',
+        players: [
+          { name: "Semuel Pizzignacco", pos: 'G', age: 25, rating: 76, starter: true }, { name: "Demba Thiam", pos: 'G', age: 28, rating: 75, starter: false }, { name: "Armando Izzo", pos: 'DC', age: 34, rating: 77, starter: true }, { name: "Andrea Carboni", pos: 'DC', age: 25, rating: 77, starter: true }, { name: "Luca Ravanelli", pos: 'DC', age: 29, rating: 76, starter: false }, { name: "Samuele Birindelli", pos: 'DL', age: 27, rating: 77, starter: false }, { name: "Paulo Azzi", pos: 'DL', age: 32, rating: 76, starter: true }, { name: "Matteo Pessina", pos: 'MC', age: 29, rating: 80, starter: true }, { name: "Pedro Obiang", pos: 'MC', age: 34, rating: 76, starter: true }, { name: "Leonardo Colombo", pos: 'MC', age: 21, rating: 75, starter: true }, { name: "Andrea Colpani", pos: 'MO', age: 27, rating: 80, starter: false }, { name: "Patrick Ciurria", pos: 'AIL', age: 31, rating: 77, starter: false }, { name: "Keita Bald\u00e9", pos: 'AIL', age: 31, rating: 77, starter: true }, { name: "Dany Mota", pos: 'BU', age: 28, rating: 78, starter: false }, { name: "Agust\u00edn \u00c1lvarez", pos: 'BU', age: 25, rating: 77, starter: true }, { name: "Arvid Brorsson", pos: 'DC', age: 27, rating: 75, starter: true }, { name: "Adam Bakoune", pos: 'DL', age: 20, rating: 75, starter: false }, { name: "Nicolas Galazzi", pos: 'AIL', age: 26, rating: 75, starter: true }, { name: "Mirko Mari\u0107", pos: 'BU', age: 31, rating: 75, starter: false }, { name: "Gianluca Caprari", pos: 'AIL', age: 33, rating: 77, starter: false }, { name: "jacopo Sardo", pos: 'MC', age: 21, rating: 74, starter: false }, { name: "Aljaz Strajnar", pos: 'G', age: 19, rating: 72, starter: false }
+        ]
+      }
+    ],
+      bundesliga: [
+      {
+        id: 'bay', tmId: 27, name: "Bayern Munich", short: 'BAY', primary: '#DC052D', secondary: '#0066B2',
+        players: [
+          { name: "Manuel Neuer", pos: 'G', age: 40, rating: 84, starter: true }, { name: "Jonas Urbig", pos: 'G', age: 23, rating: 80, starter: false }, { name: "Dayot Upamecano", pos: 'DC', age: 28, rating: 87, starter: true }, { name: "Jonathan Tah", pos: 'DC', age: 30, rating: 86, starter: true }, { name: "Min-jae Kim", pos: 'DC', age: 30, rating: 85, starter: false }, { name: "Hiroki Ito", pos: 'DC', age: 27, rating: 82, starter: false }, { name: "Josip Stani\u0161i\u0107", pos: 'DL', age: 26, rating: 82, starter: true }, { name: "Alphonso Davies", pos: 'DL', age: 26, rating: 86, starter: true }, { name: "Joshua Kimmich", pos: 'MC', age: 31, rating: 89, starter: true }, { name: "Aleksandar Pavlovi\u0107", pos: 'MC', age: 22, rating: 84, starter: true }, { name: "Leon Goretzka", pos: 'MC', age: 31, rating: 82, starter: false }, { name: "Tom Bischof", pos: 'MC', age: 21, rating: 81, starter: false }, { name: "Jamal Musiala", pos: 'MO', age: 23, rating: 90, starter: true }, { name: "Lennart Karl", pos: 'MO', age: 18, rating: 80, starter: false }, { name: "Michael Olise", pos: 'AIL', age: 24, rating: 89, starter: true }, { name: "Luis D\u00edaz", pos: 'AIL', age: 29, rating: 87, starter: true }, { name: "Serge Gnabry", pos: 'AIL', age: 31, rating: 82, starter: false }, { name: "Harry Kane", pos: 'BU', age: 33, rating: 91, starter: true }, { name: "Nicolas Jackson", pos: 'BU', age: 25, rating: 82, starter: false }, { name: "Konrad Laimer", pos: 'DL', age: 29, rating: 83, starter: false }, { name: "Rapha\u00ebl Guerreiro", pos: 'DL', age: 32, rating: 81, starter: false }, { name: "Sven Ulreich", pos: 'G', age: 38, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'bvb', tmId: 16, name: "Borussia Dortmund", short: 'BVB', primary: '#FDE100', secondary: '#000000',
+        players: [
+          { name: "Gregor Kobel", pos: 'G', age: 28, rating: 88, starter: true }, { name: "Alexander Meyer", pos: 'G', age: 35, rating: 77, starter: false }, { name: "Nico Schlotterbeck", pos: 'DC', age: 26, rating: 86, starter: true }, { name: "Waldemar Anton", pos: 'DC', age: 30, rating: 83, starter: true }, { name: "Aaron Anselmino", pos: 'DC', age: 21, rating: 80, starter: false }, { name: "Niklas S\u00fcle", pos: 'DC', age: 31, rating: 80, starter: false }, { name: "Julian Ryerson", pos: 'DL', age: 29, rating: 82, starter: true }, { name: "Daniel Svensson", pos: 'DL', age: 24, rating: 80, starter: true }, { name: "Felix Nmecha", pos: 'MC', age: 26, rating: 83, starter: true }, { name: "Jobe Bellingham", pos: 'MC', age: 21, rating: 82, starter: true }, { name: "Marcel Sabitzer", pos: 'MC', age: 32, rating: 81, starter: false }, { name: "Pascal Gro\u00df", pos: 'MC', age: 35, rating: 80, starter: false }, { name: "Julian Brandt", pos: 'MO', age: 30, rating: 83, starter: true }, { name: "Carney Chukwuemeka", pos: 'MO', age: 23, rating: 80, starter: false }, { name: "Karim Adeyemi", pos: 'AIL', age: 24, rating: 84, starter: true }, { name: "Maximilian Beier", pos: 'AIL', age: 24, rating: 82, starter: true }, { name: "Serhou Guirassy", pos: 'BU', age: 30, rating: 86, starter: false }, { name: "F\u00e1bio Silva", pos: 'BU', age: 24, rating: 80, starter: true }, { name: "Yan Couto", pos: 'DL', age: 24, rating: 81, starter: false }, { name: "Ramy Bensebaini", pos: 'DL', age: 31, rating: 79, starter: false }, { name: "Salih \u00d6zcan", pos: 'MC', age: 28, rating: 77, starter: false }, { name: "Silas Ostrzinski", pos: 'G', age: 23, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'lev', tmId: 15, name: "Bayer Leverkusen", short: 'LEV', primary: '#E32221', secondary: '#000000',
+        players: [
+          { name: "Mark Flekken", pos: 'G', age: 33, rating: 82, starter: true }, { name: "Janis Blaswich", pos: 'G', age: 35, rating: 77, starter: false }, { name: "Edmond Tapsoba", pos: 'DC', age: 27, rating: 85, starter: true }, { name: "Jarell Quansah", pos: 'DC', age: 23, rating: 82, starter: true }, { name: "Lo\u00efc Bad\u00e9", pos: 'DC', age: 26, rating: 82, starter: false }, { name: "Jeanuel Belocian", pos: 'DC', age: 21, rating: 78, starter: false }, { name: "Alejandro Grimaldo", pos: 'DL', age: 31, rating: 86, starter: true }, { name: "Lucas V\u00e1zquez", pos: 'DL', age: 35, rating: 79, starter: true }, { name: "Exequiel Palacios", pos: 'MC', age: 28, rating: 84, starter: true }, { name: "Aleix Garc\u00eda", pos: 'MC', age: 29, rating: 83, starter: true }, { name: "Robert Andrich", pos: 'MC', age: 32, rating: 81, starter: false }, { name: "Ezequiel Fern\u00e1ndez", pos: 'MC', age: 24, rating: 81, starter: false }, { name: "Malik Tillman", pos: 'MO', age: 24, rating: 83, starter: true }, { name: "Claudio Echeverri", pos: 'MO', age: 20, rating: 81, starter: false }, { name: "Nathan Tella", pos: 'AIL', age: 27, rating: 80, starter: true }, { name: "Eliesse Ben Seghir", pos: 'AIL', age: 21, rating: 82, starter: true }, { name: "Patrik Schick", pos: 'BU', age: 30, rating: 84, starter: false }, { name: "Christian Kofane", pos: 'BU', age: 20, rating: 78, starter: true }, { name: "Ernest Poku", pos: 'AIL', age: 22, rating: 79, starter: false }, { name: "Arthur", pos: 'DL', age: 23, rating: 78, starter: false }, { name: "Martin Terrier", pos: 'AIL', age: 29, rating: 80, starter: false }, { name: "Niklas Lomb", pos: 'G', age: 33, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'rbl', tmId: 23826, name: "RB Leipzig", short: 'RBL', primary: '#DD0741', secondary: '#001F4E',
+        players: [
+          { name: "P\u00e9ter Gul\u00e1csi", pos: 'G', age: 36, rating: 81, starter: true }, { name: "Maarten Vandevoordt", pos: 'G', age: 24, rating: 80, starter: false }, { name: "Castello Lukeba", pos: 'DC', age: 23, rating: 84, starter: true }, { name: "Willi Orb\u00e1n", pos: 'DC', age: 34, rating: 82, starter: true }, { name: "El Chadaille Bitshiabu", pos: 'DC', age: 21, rating: 79, starter: false }, { name: "Ridle Baku", pos: 'DL', age: 28, rating: 81, starter: false }, { name: "David Raum", pos: 'DL', age: 28, rating: 83, starter: true }, { name: "Nicolas Seiwald", pos: 'MC', age: 25, rating: 82, starter: true }, { name: "Assan Ou\u00e9draogo", pos: 'MC', age: 20, rating: 80, starter: true }, { name: "Xaver Schlager", pos: 'MC', age: 29, rating: 81, starter: true }, { name: "Christoph Baumgartner", pos: 'MO', age: 27, rating: 82, starter: false }, { name: "Ezechiel Banzuzi", pos: 'MC', age: 21, rating: 79, starter: false }, { name: "Johan Bakayoko", pos: 'AIL', age: 23, rating: 83, starter: true }, { name: "Antonio Nusa", pos: 'AIL', age: 21, rating: 82, starter: false }, { name: "Yan Diomande", pos: 'AIL', age: 19, rating: 80, starter: true }, { name: "R\u00f4mulo", pos: 'BU', age: 24, rating: 81, starter: true }, { name: "Conrad Harder", pos: 'BU', age: 21, rating: 80, starter: false }, { name: "Lukas Klostermann", pos: 'DC', age: 30, rating: 79, starter: true }, { name: "Benjamin Henrichs", pos: 'DL', age: 29, rating: 80, starter: false }, { name: "Tidiam Gomis", pos: 'AIL', age: 20, rating: 77, starter: false }, { name: "Kosta Nedeljkovi\u0107", pos: 'DL', age: 20, rating: 77, starter: false }, { name: "Leopold Zingerle", pos: 'G', age: 32, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'stu', tmId: 79, name: "VfB Stuttgart", short: 'STU', primary: '#E32219', secondary: '#FFFFFF',
+        players: [
+          { name: "Alexander N\u00fcbel", pos: 'G', age: 30, rating: 83, starter: true }, { name: "Fabian Bredlow", pos: 'G', age: 31, rating: 75, starter: false }, { name: "Jeff Chabot", pos: 'DC', age: 28, rating: 81, starter: true }, { name: "Finn Jeltsch", pos: 'DC', age: 20, rating: 79, starter: true }, { name: "Luca Jaquez", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Lorenz Assignon", pos: 'DL', age: 26, rating: 80, starter: false }, { name: "Maximilian Mittelst\u00e4dt", pos: 'DL', age: 29, rating: 83, starter: true }, { name: "Angelo Stiller", pos: 'MC', age: 25, rating: 85, starter: true }, { name: "Atakan Karazor", pos: 'MC', age: 30, rating: 80, starter: true }, { name: "Chema Andr\u00e9s", pos: 'MC', age: 21, rating: 78, starter: true }, { name: "Bilal El Khannouss", pos: 'MO', age: 22, rating: 82, starter: false }, { name: "Jamie Leweling", pos: 'AIL', age: 25, rating: 81, starter: false }, { name: "Chris F\u00fchrich", pos: 'AIL', age: 28, rating: 80, starter: true }, { name: "Badredine Bouanani", pos: 'AIL', age: 21, rating: 79, starter: false }, { name: "Deniz Undav", pos: 'BU', age: 30, rating: 82, starter: true }, { name: "Ermedin Demirovi\u0107", pos: 'BU', age: 28, rating: 82, starter: true }, { name: "Tiago Tom\u00e1s", pos: 'BU', age: 24, rating: 79, starter: false }, { name: "Josha Vagnoman", pos: 'DL', age: 25, rating: 79, starter: true }, { name: "Ramon Hendriks", pos: 'DC', age: 25, rating: 77, starter: false }, { name: "Nikolas Nartey", pos: 'MC', age: 26, rating: 76, starter: false }, { name: "Lazar Jovanovi\u0107", pos: 'AIL', age: 19, rating: 76, starter: false }, { name: "Stefan Drlja\u010da", pos: 'G', age: 27, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'sge', tmId: 24, name: "Eintracht Frankfurt", short: 'SGE', primary: '#E1000F', secondary: '#000000',
+        players: [
+          { name: "Michael Zetterer", pos: 'G', age: 31, rating: 79, starter: true }, { name: "Kau\u00e3 Santos", pos: 'G', age: 23, rating: 80, starter: false }, { name: "Robin Koch", pos: 'DC', age: 30, rating: 82, starter: true }, { name: "Arthur Theate", pos: 'DC', age: 26, rating: 82, starter: true }, { name: "Nnamdi Collins", pos: 'DC', age: 22, rating: 79, starter: false }, { name: "Rasmus Kristensen", pos: 'DL', age: 29, rating: 79, starter: false }, { name: "Nathaniel Brown", pos: 'DL', age: 23, rating: 81, starter: true }, { name: "Hugo Larsson", pos: 'MC', age: 22, rating: 83, starter: true }, { name: "Ellyes Skhiri", pos: 'MC', age: 31, rating: 80, starter: true }, { name: "Can Uzun", pos: 'MO', age: 21, rating: 82, starter: true }, { name: "Mario G\u00f6tze", pos: 'MO', age: 34, rating: 79, starter: false }, { name: "Ritsu Doan", pos: 'AIL', age: 28, rating: 82, starter: false }, { name: "Jean-Matt\u00e9o Bahoya", pos: 'AIL', age: 21, rating: 80, starter: true }, { name: "Ansgar Knauff", pos: 'AIL', age: 24, rating: 79, starter: false }, { name: "Jonathan Burkardt", pos: 'BU', age: 26, rating: 83, starter: true }, { name: "Elye Wahi", pos: 'BU', age: 23, rating: 80, starter: true }, { name: "Michy Batshuayi", pos: 'BU', age: 33, rating: 77, starter: false }, { name: "Far\u00e8s Cha\u00efbi", pos: 'MO', age: 23, rating: 79, starter: true }, { name: "Oscar H\u00f8jlund", pos: 'MC', age: 21, rating: 77, starter: false }, { name: "Aur\u00e8le Amenda", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Timothy Chandler", pos: 'DL', age: 36, rating: 73, starter: false }, { name: "Jens Grahl", pos: 'G', age: 38, rating: 71, starter: false }
+        ]
+      },
+      {
+        id: 'scf', tmId: 60, name: "SC Freiburg", short: 'SCF', primary: '#E2001A', secondary: '#000000',
+        players: [
+          { name: "Noah Atubolu", pos: 'G', age: 24, rating: 81, starter: true }, { name: "Florian M\u00fcller", pos: 'G', age: 29, rating: 76, starter: false }, { name: "Matthias Ginter", pos: 'DC', age: 32, rating: 81, starter: true }, { name: "Philipp Lienhart", pos: 'DC', age: 30, rating: 81, starter: true }, { name: "Max Rosenfelder", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Lukas K\u00fcbler", pos: 'DL', age: 34, rating: 77, starter: false }, { name: "Christian G\u00fcnter", pos: 'DL', age: 33, rating: 78, starter: true }, { name: "Maximilian Eggestein", pos: 'MC', age: 29, rating: 80, starter: true }, { name: "Patrick Osterhage", pos: 'MC', age: 26, rating: 79, starter: true }, { name: "Johan Manzambi", pos: 'MC', age: 21, rating: 78, starter: true }, { name: "Yuito Suzuki", pos: 'MO', age: 25, rating: 79, starter: false }, { name: "Jan-Niklas Beste", pos: 'AIL', age: 27, rating: 79, starter: false }, { name: "Vincenzo Grifo", pos: 'AIL', age: 33, rating: 80, starter: true }, { name: "Derry Scherhant", pos: 'AIL', age: 24, rating: 77, starter: false }, { name: "Igor Matanovi\u0107", pos: 'BU', age: 23, rating: 79, starter: true }, { name: "Lucas H\u00f6ler", pos: 'BU', age: 32, rating: 77, starter: true }, { name: "Junior Adamu", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "Philipp Treu", pos: 'DL', age: 25, rating: 77, starter: true }, { name: "Jordy Makengo", pos: 'DL', age: 25, rating: 76, starter: false }, { name: "Nicolas H\u00f6fler", pos: 'MC', age: 36, rating: 76, starter: false }, { name: "Eren Dink\u00e7i", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Jannik Huth", pos: 'G', age: 32, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'm05', tmId: 39, name: "1. FSV Mainz 05", short: 'M05', primary: '#C3141E', secondary: '#FFFFFF',
+        players: [
+          { name: "Robin Zentner", pos: 'G', age: 32, rating: 80, starter: true }, { name: "Lasse Rie\u00df", pos: 'G', age: 25, rating: 74, starter: false }, { name: "Dominik Kohr", pos: 'DC', age: 32, rating: 78, starter: true }, { name: "Stefan Bell", pos: 'DC', age: 35, rating: 76, starter: true }, { name: "Andreas Hanche-Olsen", pos: 'DC', age: 29, rating: 78, starter: false }, { name: "Anthony Caci", pos: 'DL', age: 29, rating: 79, starter: false }, { name: "Phillipp Mwene", pos: 'DL', age: 32, rating: 77, starter: true }, { name: "Kaishu Sano", pos: 'MC', age: 25, rating: 80, starter: true }, { name: "Nadiem Amiri", pos: 'MC', age: 30, rating: 82, starter: true }, { name: "Paul Nebel", pos: 'MO', age: 24, rating: 80, starter: true }, { name: "Jae-sung Lee", pos: 'MO', age: 34, rating: 79, starter: false }, { name: "Armindo Sieb", pos: 'AIL', age: 23, rating: 78, starter: false }, { name: "Nelson Weiper", pos: 'BU', age: 21, rating: 78, starter: true }, { name: "Benedict Hollerbach", pos: 'BU', age: 25, rating: 79, starter: false }, { name: "Arnaud Nordin", pos: 'AIL', age: 28, rating: 78, starter: true }, { name: "Maxim Dal", pos: 'DC', age: 20, rating: 75, starter: true }, { name: "Danny da Costa", pos: 'DL', age: 33, rating: 76, starter: false }, { name: "Lennard Maloney", pos: 'MC', age: 27, rating: 76, starter: true }, { name: "Sota Kawasaki", pos: 'MC', age: 25, rating: 76, starter: false }, { name: "William B\u00f8ving", pos: 'AIL', age: 23, rating: 78, starter: false }, { name: "Silvan Widmer", pos: 'DL', age: 33, rating: 76, starter: false }, { name: "Daniel Batz", pos: 'G', age: 35, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'svw', tmId: 86, name: "Werder Bremen", short: 'SVW', primary: '#1D9053', secondary: '#FFFFFF',
+        players: [
+          { name: "Mio Backhaus", pos: 'G', age: 22, rating: 78, starter: true }, { name: "Karl Hein", pos: 'G', age: 24, rating: 78, starter: false }, { name: "Marco Friedl", pos: 'DC', age: 28, rating: 80, starter: true }, { name: "Niklas Stark", pos: 'DC', age: 31, rating: 78, starter: true }, { name: "Karim Coulibaly", pos: 'DC', age: 19, rating: 76, starter: false }, { name: "Yukinari Sugawara", pos: 'DL', age: 26, rating: 79, starter: false }, { name: "Felix Agu", pos: 'DL', age: 27, rating: 78, starter: true }, { name: "Senne Lynen", pos: 'MC', age: 27, rating: 79, starter: true }, { name: "Jens Stage", pos: 'MC', age: 30, rating: 80, starter: true }, { name: "Romano Schmid", pos: 'MO', age: 26, rating: 81, starter: true }, { name: "Cameron Puertas", pos: 'MO', age: 28, rating: 79, starter: false }, { name: "Marco Gr\u00fcll", pos: 'AIL', age: 28, rating: 78, starter: false }, { name: "Samuel Mbangula", pos: 'AIL', age: 22, rating: 79, starter: true }, { name: "Victor Boniface", pos: 'BU', age: 25, rating: 83, starter: false }, { name: "Justin Njinmah", pos: 'BU', age: 26, rating: 79, starter: true }, { name: "Keke Topp", pos: 'BU', age: 22, rating: 77, starter: true }, { name: "Mitchell Weiser", pos: 'DL', age: 32, rating: 79, starter: false }, { name: "Isaac Schmidt", pos: 'DL', age: 26, rating: 77, starter: true }, { name: "Leonardo Bittencourt", pos: 'MC', age: 32, rating: 76, starter: false }, { name: "Patrice \u010covi\u0107", pos: 'MO', age: 19, rating: 75, starter: false }, { name: "Julian Malatini", pos: 'DC', age: 25, rating: 76, starter: false }, { name: "Markus Kolke", pos: 'G', age: 36, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'fca', tmId: 167, name: "FC Augsburg", short: 'FCA', primary: '#BA3733', secondary: '#FFFFFF',
+        players: [
+          { name: "Finn Dahmen", pos: 'G', age: 28, rating: 80, starter: true }, { name: "Nediljko Labrovi\u0107", pos: 'G', age: 27, rating: 76, starter: false }, { name: "Chrislain Matsima", pos: 'DC', age: 24, rating: 80, starter: true }, { name: "Jeffrey Gouweleeuw", pos: 'DC', age: 35, rating: 77, starter: true }, { name: "Keven Schlotterbeck", pos: 'DC', age: 29, rating: 78, starter: false }, { name: "Marius Wolf", pos: 'DL', age: 31, rating: 77, starter: false }, { name: "Dimitrios Giannoulis", pos: 'DL', age: 31, rating: 78, starter: true }, { name: "Kristijan Jaki\u0107", pos: 'MC', age: 29, rating: 79, starter: true }, { name: "Han-Noah Massengo", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Elvis Rexhbe\u00e7aj", pos: 'MC', age: 29, rating: 77, starter: true }, { name: "Fabian Rieder", pos: 'MO', age: 24, rating: 80, starter: false }, { name: "Mert K\u00f6m\u00fcr", pos: 'MO', age: 21, rating: 78, starter: false }, { name: "Alexis Claude-Maurice", pos: 'AIL', age: 28, rating: 79, starter: true }, { name: "Samuel Essende", pos: 'BU', age: 28, rating: 78, starter: false }, { name: "Phillip Tietz", pos: 'BU', age: 29, rating: 77, starter: true }, { name: "Noahkai Banks", pos: 'DC', age: 20, rating: 76, starter: true }, { name: "C\u00e9dric Zesiger", pos: 'DC', age: 28, rating: 77, starter: false }, { name: "Mads Pedersen", pos: 'DL', age: 30, rating: 76, starter: true }, { name: "Isma\u00ebl Gharbi", pos: 'MO', age: 22, rating: 78, starter: false }, { name: "Elias Saad", pos: 'AIL', age: 26, rating: 78, starter: false }, { name: "Anton Kade", pos: 'AIL', age: 22, rating: 76, starter: false }, { name: "Daniel Klein", pos: 'G', age: 25, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'tsg', tmId: 533, name: "TSG Hoffenheim", short: 'TSG', primary: '#1961B5', secondary: '#FFFFFF',
+        players: [
+          { name: "Oliver Baumann", pos: 'G', age: 36, rating: 82, starter: true }, { name: "Luca Philipp", pos: 'G', age: 25, rating: 75, starter: false }, { name: "Ozan Kabak", pos: 'DC', age: 26, rating: 79, starter: true }, { name: "Albian Hajdari", pos: 'DC', age: 23, rating: 78, starter: true }, { name: "Robin Hran\u00e1\u010d", pos: 'DC', age: 26, rating: 78, starter: false }, { name: "Vladim\u00edr Coufal", pos: 'DL', age: 34, rating: 77, starter: false }, { name: "Bernardo", pos: 'DL', age: 31, rating: 78, starter: true }, { name: "Wouter Burger", pos: 'MC', age: 25, rating: 79, starter: true }, { name: "Leon Avdullahu", pos: 'MC', age: 22, rating: 78, starter: true }, { name: "Grischa Pr\u00f6mel", pos: 'MC', age: 31, rating: 79, starter: true }, { name: "Andrej Kramari\u0107", pos: 'MO', age: 35, rating: 81, starter: false }, { name: "Bazoumana Tour\u00e9", pos: 'AIL', age: 20, rating: 78, starter: false }, { name: "Max Moerstedt", pos: 'BU', age: 20, rating: 77, starter: true }, { name: "Fisnik Asllani", pos: 'BU', age: 24, rating: 79, starter: false }, { name: "Tim Lemperle", pos: 'BU', age: 24, rating: 78, starter: true }, { name: "Koki Machida", pos: 'DC', age: 29, rating: 79, starter: true }, { name: "Alexander Prass", pos: 'DL', age: 25, rating: 78, starter: false }, { name: "Muhammed Damar", pos: 'MO', age: 22, rating: 77, starter: true }, { name: "Adam Hlo\u017eek", pos: 'BU', age: 24, rating: 80, starter: false }, { name: "Ihlas Bebou", pos: 'AIL', age: 32, rating: 76, starter: false }, { name: "Umut Tohumcu", pos: 'MC', age: 22, rating: 77, starter: false }, { name: "L\u00fakas Petersson", pos: 'G', age: 22, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'bmg', tmId: 18, name: "Borussia M'gladbach", short: 'BMG', primary: '#000000', secondary: '#FFFFFF',
+        players: [
+          { name: "Moritz Nicolas", pos: 'G', age: 29, rating: 79, starter: true }, { name: "Jonas Omlin", pos: 'G', age: 32, rating: 78, starter: false }, { name: "Nico Elvedi", pos: 'DC', age: 30, rating: 80, starter: true }, { name: "Kevin Diks", pos: 'DC', age: 30, rating: 79, starter: true }, { name: "Fabio Chiarodia", pos: 'DC', age: 21, rating: 77, starter: false }, { name: "Joe Scally", pos: 'DL', age: 23, rating: 79, starter: false }, { name: "Luca Netz", pos: 'DL', age: 23, rating: 78, starter: true }, { name: "Rocco Reitz", pos: 'MC', age: 24, rating: 80, starter: true }, { name: "Yannik Engelhardt", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Philipp Sander", pos: 'MC', age: 28, rating: 77, starter: true }, { name: "Kevin St\u00f6ger", pos: 'MO', age: 33, rating: 78, starter: false }, { name: "Giovanni Reyna", pos: 'MO', age: 24, rating: 79, starter: false }, { name: "Franck Honorat", pos: 'AIL', age: 30, rating: 80, starter: true }, { name: "Robin Hack", pos: 'AIL', age: 28, rating: 79, starter: false }, { name: "Tim Kleindienst", pos: 'BU', age: 31, rating: 82, starter: true }, { name: "Shuto Machino", pos: 'BU', age: 27, rating: 79, starter: true }, { name: "Haris Tabakovi\u0107", pos: 'BU', age: 32, rating: 77, starter: false }, { name: "Lukas Ullrich", pos: 'DL', age: 22, rating: 77, starter: true }, { name: "Kota Takai", pos: 'DC', age: 22, rating: 77, starter: false }, { name: "Jens Castrop", pos: 'MC', age: 23, rating: 78, starter: false }, { name: "Nathan Ngoumou", pos: 'AIL', age: 26, rating: 77, starter: false }, { name: "Tobias Sippel", pos: 'G', age: 38, rating: 71, starter: false }
+        ]
+      },
+      {
+        id: 'fcu', tmId: 89, name: "1. FC Union Berlin", short: 'FCU', primary: '#EB1923', secondary: '#FFFFFF',
+        players: [
+          { name: "Frederik R\u00f8nnow", pos: 'G', age: 34, rating: 80, starter: true }, { name: "Matheo Raab", pos: 'G', age: 27, rating: 75, starter: false }, { name: "Danilho Doekhi", pos: 'DC', age: 28, rating: 80, starter: true }, { name: "Diogo Leite", pos: 'DC', age: 27, rating: 81, starter: true }, { name: "Leopold Querfeld", pos: 'DC', age: 22, rating: 79, starter: false }, { name: "Christopher Trimmel", pos: 'DL', age: 39, rating: 74, starter: false }, { name: "Derrick K\u00f6hn", pos: 'DL', age: 27, rating: 78, starter: true }, { name: "Rani Khedira", pos: 'MC', age: 32, rating: 79, starter: true }, { name: "Andr\u00e1s Sch\u00e4fer", pos: 'MC', age: 27, rating: 78, starter: true }, { name: "Aljoscha Kemlein", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Woo-yeong Jeong", pos: 'MO', age: 27, rating: 78, starter: false }, { name: "Tim Skarke", pos: 'AIL', age: 30, rating: 77, starter: false }, { name: "Oliver Burke", pos: 'AIL', age: 29, rating: 76, starter: true }, { name: "Ilyas Ansah", pos: 'BU', age: 22, rating: 78, starter: false }, { name: "Andrej Ili\u0107", pos: 'BU', age: 26, rating: 78, starter: true }, { name: "Stanley Nsoki", pos: 'DC', age: 27, rating: 77, starter: true }, { name: "Josip Juranovi\u0107", pos: 'DL', age: 31, rating: 78, starter: false }, { name: "Tom Rothe", pos: 'DL', age: 22, rating: 78, starter: true }, { name: "Janik Haberer", pos: 'MC', age: 32, rating: 77, starter: false }, { name: "Livan Burcu", pos: 'AIL', age: 22, rating: 76, starter: false }, { name: "Marin Ljubi\u010di\u0107", pos: 'BU', age: 24, rating: 78, starter: false }, { name: "Carl Klaus", pos: 'G', age: 32, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'koe', tmId: 3, name: "1. FC K\u00f6ln", short: 'KOE', primary: '#ED1C24', secondary: '#FFFFFF',
+        players: [
+          { name: "Marvin Schw\u00e4be", pos: 'G', age: 31, rating: 79, starter: true }, { name: "Ron-Robert Zieler", pos: 'G', age: 37, rating: 76, starter: false }, { name: "Timo H\u00fcbers", pos: 'DC', age: 30, rating: 79, starter: true }, { name: "Rav van den Berg", pos: 'DC', age: 22, rating: 79, starter: true }, { name: "Cenk \u00d6zka\u00e7ar", pos: 'DC', age: 26, rating: 77, starter: false }, { name: "Sebastian Sebulonsen", pos: 'DL', age: 26, rating: 77, starter: false }, { name: "Kristoffer Lund", pos: 'DL', age: 24, rating: 77, starter: true }, { name: "Eric Martel", pos: 'MC', age: 24, rating: 80, starter: true }, { name: "\u00cdsak Bergmann J\u00f3hannesson", pos: 'MC', age: 23, rating: 78, starter: true }, { name: "Tom Krau\u00df", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Denis Huseinba\u0161i\u0107", pos: 'MO', age: 25, rating: 78, starter: false }, { name: "Said El Mala", pos: 'AIL', age: 20, rating: 79, starter: false }, { name: "Jan Thielmann", pos: 'AIL', age: 24, rating: 78, starter: true }, { name: "Jakub Kami\u0144ski", pos: 'AIL', age: 24, rating: 78, starter: false }, { name: "Ragnar Ache", pos: 'BU', age: 28, rating: 79, starter: true }, { name: "Marius B\u00fclter", pos: 'BU', age: 33, rating: 77, starter: true }, { name: "Luca Waldschmidt", pos: 'MO', age: 30, rating: 77, starter: false }, { name: "Joel Schmied", pos: 'DC', age: 28, rating: 77, starter: true }, { name: "Jusuf Gazibegovi\u0107", pos: 'DL', age: 26, rating: 78, starter: false }, { name: "Florian Kainz", pos: 'AIL', age: 34, rating: 76, starter: false }, { name: "Linton Maina", pos: 'AIL', age: 27, rating: 77, starter: false }, { name: "Matthias K\u00f6bbing", pos: 'G', age: 29, rating: 71, starter: false }
+        ]
+      },
+      {
+        id: 'hsv', tmId: 41, name: "Hamburger SV", short: 'HSV', primary: '#005CA9', secondary: '#FFFFFF',
+        players: [
+          { name: "Daniel Heuer Fernandes", pos: 'G', age: 34, rating: 77, starter: true }, { name: "Daniel Peretz", pos: 'G', age: 26, rating: 78, starter: false }, { name: "Luka Vu\u0161kovi\u0107", pos: 'DC', age: 19, rating: 80, starter: true }, { name: "Warmed Omari", pos: 'DC', age: 26, rating: 78, starter: true }, { name: "Jordan Torunarigha", pos: 'DC', age: 29, rating: 78, starter: false }, { name: "Giorgi Gocholeishvili", pos: 'DL', age: 25, rating: 77, starter: false }, { name: "Miro Muheim", pos: 'DL', age: 28, rating: 78, starter: true }, { name: "Nicol\u00e1s Capaldo", pos: 'MC', age: 28, rating: 78, starter: true }, { name: "Sambi Lokonga", pos: 'MC', age: 27, rating: 79, starter: true }, { name: "Jonas Meffert", pos: 'MC', age: 32, rating: 76, starter: true }, { name: "F\u00e1bio Vieira", pos: 'MO', age: 26, rating: 80, starter: false }, { name: "Rayan Philippe", pos: 'AIL', age: 26, rating: 78, starter: false }, { name: "Jean-Luc Domp\u00e9", pos: 'AIL', age: 31, rating: 78, starter: true }, { name: "Ransford K\u00f6nigsd\u00f6rffer", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "Robert Glatzel", pos: 'BU', age: 32, rating: 78, starter: true }, { name: "Yussuf Poulsen", pos: 'BU', age: 32, rating: 77, starter: true }, { name: "William Mikelbrencis", pos: 'DL', age: 22, rating: 76, starter: false }, { name: "Aboubaka Soumahoro", pos: 'DC', age: 21, rating: 75, starter: true }, { name: "Nicolai Remberg", pos: 'MC', age: 26, rating: 76, starter: false }, { name: "Bakery Jatta", pos: 'AIL', age: 28, rating: 76, starter: false }, { name: "Emir Sahiti", pos: 'AIL', age: 27, rating: 76, starter: false }, { name: "Hannes Hermann", pos: 'G', age: 21, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 's04', tmId: 33, name: "FC Schalke 04", short: 'S04', primary: '#004D9D', secondary: '#FFFFFF',
+        players: [
+          { name: "Justin Heekeren", pos: 'G', age: 25, rating: 76, starter: true }, { name: "Loris Karius", pos: 'G', age: 33, rating: 76, starter: false }, { name: "Tomas Kalas", pos: 'DC', age: 33, rating: 76, starter: true }, { name: "Felipe S\u00e1nchez", pos: 'DC', age: 22, rating: 77, starter: true }, { name: "Marcin Kami\u0144ski", pos: 'DC', age: 34, rating: 75, starter: false }, { name: "Taylan Bulut", pos: 'DL', age: 20, rating: 78, starter: false }, { name: "Vitalie Becker", pos: 'DL', age: 21, rating: 76, starter: true }, { name: "Paul Seguin", pos: 'MC', age: 31, rating: 77, starter: true }, { name: "Soufiane El-Faouzi", pos: 'MC', age: 24, rating: 77, starter: true }, { name: "Janik Bachmann", pos: 'MC', age: 30, rating: 75, starter: true }, { name: "Kenan Karaman", pos: 'MO', age: 32, rating: 78, starter: false }, { name: "Tobias Mohr", pos: 'AIL', age: 31, rating: 76, starter: false }, { name: "Christopher Antwi-Adjei", pos: 'AIL', age: 32, rating: 76, starter: true }, { name: "Moussa Sylla", pos: 'BU', age: 26, rating: 79, starter: false }, { name: "Emil H\u00f8jlund", pos: 'BU', age: 21, rating: 76, starter: true }, { name: "Max Gr\u00fcger", pos: 'MC', age: 21, rating: 76, starter: true }, { name: "Adrian Gantenbein", pos: 'DL', age: 25, rating: 75, starter: false }, { name: "Ibrahima Ciss\u00e9", pos: 'DC', age: 25, rating: 75, starter: true }, { name: "Amin Younes", pos: 'MO', age: 33, rating: 75, starter: false }, { name: "Bryan Lasme", pos: 'BU', age: 28, rating: 75, starter: false }, { name: "Peter Remmert", pos: 'BU', age: 21, rating: 74, starter: false }, { name: "Michael Langer", pos: 'G', age: 41, rating: 70, starter: false }
+        ]
+      },
+      {
+        id: 'elv', tmId: 64, name: "SV Elversberg", short: 'ELV', primary: '#000000', secondary: '#FFFFFF',
+        players: [
+          { name: "Nicolas Kristof", pos: 'G', age: 26, rating: 76, starter: true }, { name: "Tim Boss", pos: 'G', age: 33, rating: 73, starter: false }, { name: "Maximilian Rohr", pos: 'DC', age: 31, rating: 75, starter: true }, { name: "Lukas Pinckert", pos: 'DC', age: 26, rating: 75, starter: true }, { name: "Florian Le Joncour", pos: 'DC', age: 31, rating: 75, starter: false }, { name: "Elias Baum", pos: 'DL', age: 21, rating: 77, starter: false }, { name: "Maurice Neubauer", pos: 'DL', age: 30, rating: 75, starter: true }, { name: "Carlo Sickinger", pos: 'MC', age: 29, rating: 76, starter: true }, { name: "Semih Sahin", pos: 'MC', age: 26, rating: 76, starter: true }, { name: "Muhammed Damar", pos: 'MO', age: 22, rating: 77, starter: true }, { name: "Tom Zimmerschied", pos: 'AIL', age: 28, rating: 76, starter: false }, { name: "Lukas Petkov", pos: 'AIL', age: 26, rating: 76, starter: false }, { name: "Fisnik Asllani", pos: 'BU', age: 24, rating: 78, starter: true }, { name: "Luca Schnellbacher", pos: 'BU', age: 32, rating: 75, starter: false }, { name: "Younes Ebnoutalib", pos: 'BU', age: 23, rating: 76, starter: true }, { name: "Frederik J\u00e4kel", pos: 'DC', age: 25, rating: 75, starter: true }, { name: "Jan Gyamerah", pos: 'DL', age: 31, rating: 75, starter: false }, { name: "Frederik Schmahl", pos: 'MC', age: 23, rating: 75, starter: true }, { name: "Manuel Feil", pos: 'AIL', age: 32, rating: 74, starter: false }, { name: "Filimon Gerezgiher", pos: 'AIL', age: 26, rating: 75, starter: false }, { name: "Mohammad Mahmoud", pos: 'BU', age: 21, rating: 74, starter: false }, { name: "Frank Lehmann", pos: 'G', age: 37, rating: 71, starter: false }
+        ]
+      },
+      {
+        id: 'pad', tmId: 127, name: "SC Paderborn", short: 'PAD', primary: '#0056A3', secondary: '#000000',
+        players: [
+          { name: "Pelle Boevink", pos: 'G', age: 28, rating: 76, starter: true }, { name: "Markus Schubert", pos: 'G', age: 28, rating: 75, starter: false }, { name: "Tjark Scheller", pos: 'DC', age: 24, rating: 76, starter: true }, { name: "Felix G\u00f6tze", pos: 'DC', age: 28, rating: 76, starter: true }, { name: "Calvin Brackelmann", pos: 'DC', age: 27, rating: 76, starter: false }, { name: "Laurin Curda", pos: 'DL', age: 25, rating: 76, starter: false }, { name: "Aaron Zehnter", pos: 'DL', age: 22, rating: 77, starter: true }, { name: "Santiago Casta\u00f1eda", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Raphael Obermair", pos: 'MC', age: 30, rating: 76, starter: true }, { name: "Sebastian Klaas", pos: 'MO', age: 28, rating: 76, starter: true }, { name: "Filip Bilbija", pos: 'MO', age: 26, rating: 78, starter: false }, { name: "Ilyas Ansah", pos: 'AIL', age: 22, rating: 78, starter: false }, { name: "Adriano Grimaldi", pos: 'BU', age: 35, rating: 75, starter: true }, { name: "Sven Michel", pos: 'BU', age: 36, rating: 75, starter: false }, { name: "Steffen Tigges", pos: 'BU', age: 28, rating: 76, starter: true }, { name: "Marcel Hoffmeier", pos: 'DC', age: 27, rating: 75, starter: true }, { name: "Mattes Hansen", pos: 'MC', age: 22, rating: 75, starter: false }, { name: "Luis Engelns", pos: 'MC', age: 19, rating: 75, starter: true }, { name: "Koen Kostons", pos: 'BU', age: 27, rating: 76, starter: false }, { name: "Lucas Copado", pos: 'AIL', age: 22, rating: 75, starter: false }, { name: "David Kinsombi", pos: 'MC', age: 30, rating: 75, starter: false }, { name: "Arne Schulz", pos: 'G', age: 23, rating: 72, starter: false }
+        ]
+      }
+    ],
+      ligue1: [
+      {
+        id: 'psg', tmId: 583, name: "Paris Saint-Germain", short: 'PSG', primary: '#004170', secondary: '#DA291C',
+        players: [
+          { name: "Lucas Chevalier", pos: 'G', age: 25, rating: 86, starter: true }, { name: "Matvey Safonov", pos: 'G', age: 27, rating: 81, starter: false }, { name: "Marquinhos", pos: 'DC', age: 32, rating: 87, starter: true }, { name: "Willian Pacho", pos: 'DC', age: 25, rating: 86, starter: true }, { name: "Ilya Zabarnyi", pos: 'DC', age: 24, rating: 84, starter: false }, { name: "Lucas Beraldo", pos: 'DC', age: 22, rating: 82, starter: false }, { name: "Achraf Hakimi", pos: 'DL', age: 28, rating: 89, starter: true }, { name: "Nuno Mendes", pos: 'DL', age: 24, rating: 87, starter: true }, { name: "Vitinha", pos: 'MC', age: 26, rating: 89, starter: true }, { name: "Jo\u00e3o Neves", pos: 'MC', age: 22, rating: 87, starter: true }, { name: "Fabi\u00e1n Ruiz", pos: 'MC', age: 30, rating: 85, starter: false }, { name: "Warren Za\u00efre-Emery", pos: 'MC', age: 20, rating: 85, starter: false }, { name: "D\u00e9sir\u00e9 Dou\u00e9", pos: 'MO', age: 21, rating: 86, starter: true }, { name: "Lee Kang-in", pos: 'MO', age: 25, rating: 83, starter: false }, { name: "Ousmane Demb\u00e9l\u00e9", pos: 'AIL', age: 29, rating: 89, starter: true }, { name: "Khvicha Kvaratskhelia", pos: 'AIL', age: 25, rating: 88, starter: true }, { name: "Bradley Barcola", pos: 'AIL', age: 24, rating: 86, starter: false }, { name: "Gon\u00e7alo Ramos", pos: 'BU', age: 25, rating: 83, starter: true }, { name: "Ibrahim Mbaye", pos: 'AIL', age: 18, rating: 78, starter: false }, { name: "Senny Mayulu", pos: 'MC', age: 20, rating: 79, starter: false }, { name: "Lucas Hern\u00e1ndez", pos: 'DC', age: 30, rating: 82, starter: false }, { name: "Renato Marin", pos: 'G', age: 20, rating: 75, starter: false }
+        ]
+      },
+      {
+        id: 'om', tmId: 244, name: "Olympique de Marseille", short: 'OM', primary: '#009DDC', secondary: '#FFFFFF',
+        players: [
+          { name: "Ger\u00f3nimo Rulli", pos: 'G', age: 34, rating: 82, starter: true }, { name: "Jeffrey de Lange", pos: 'G', age: 28, rating: 76, starter: false }, { name: "Leonardo Balerdi", pos: 'DC', age: 27, rating: 83, starter: true }, { name: "Nayef Aguerd", pos: 'DC', age: 30, rating: 82, starter: true }, { name: "Benjamin Pavard", pos: 'DC', age: 30, rating: 83, starter: false }, { name: "Facundo Medina", pos: 'DC', age: 27, rating: 82, starter: false }, { name: "Michael Murillo", pos: 'DL', age: 30, rating: 79, starter: true }, { name: "Emerson Palmieri", pos: 'DL', age: 32, rating: 80, starter: true }, { name: "Pierre-Emile H\u00f8jbjerg", pos: 'MC', age: 31, rating: 83, starter: true }, { name: "Arthur Vermeeren", pos: 'MC', age: 21, rating: 81, starter: true }, { name: "Matt O'Riley", pos: 'MO', age: 25, rating: 81, starter: false }, { name: "Geoffrey Kondogbia", pos: 'MC', age: 33, rating: 79, starter: false }, { name: "Angel Gomes", pos: 'MO', age: 26, rating: 81, starter: true }, { name: "Hamed Traor\u00e8", pos: 'MO', age: 26, rating: 80, starter: false }, { name: "Mason Greenwood", pos: 'AIL', age: 25, rating: 85, starter: true }, { name: "Igor Paix\u00e3o", pos: 'AIL', age: 26, rating: 82, starter: true }, { name: "Timothy Weah", pos: 'AIL', age: 26, rating: 80, starter: false }, { name: "Amine Gouiri", pos: 'BU', age: 26, rating: 82, starter: true }, { name: "Pierre-Emerick Aubameyang", pos: 'BU', age: 37, rating: 80, starter: false }, { name: "Robinio Vaz", pos: 'BU', age: 19, rating: 78, starter: false }, { name: "Ulisses Garcia", pos: 'DL', age: 30, rating: 77, starter: false }, { name: "Pol Lirola", pos: 'DL', age: 29, rating: 76, starter: false }
+        ]
+      },
+      {
+        id: 'asm', tmId: 162, name: "AS Monaco", short: 'ASM', primary: '#E51B24', secondary: '#FFFFFF',
+        players: [
+          { name: "Luk\u00e1\u0161 Hr\u00e1deck\u00fd", pos: 'G', age: 36, rating: 80, starter: true }, { name: "Philipp K\u00f6hn", pos: 'G', age: 28, rating: 78, starter: false }, { name: "Thilo Kehrer", pos: 'DC', age: 30, rating: 81, starter: true }, { name: "Mohammed Salisu", pos: 'DC', age: 27, rating: 80, starter: true }, { name: "Christian Mawissa", pos: 'DC', age: 21, rating: 79, starter: false }, { name: "Eric Dier", pos: 'DC', age: 32, rating: 79, starter: false }, { name: "Vanderson", pos: 'DL', age: 25, rating: 82, starter: true }, { name: "Caio Henrique", pos: 'DL', age: 29, rating: 81, starter: true }, { name: "Denis Zakaria", pos: 'MC', age: 29, rating: 83, starter: true }, { name: "Lamine Camara", pos: 'MC', age: 22, rating: 82, starter: true }, { name: "Paul Pogba", pos: 'MC', age: 33, rating: 79, starter: false }, { name: "Aleksandr Golovin", pos: 'MO', age: 30, rating: 83, starter: false }, { name: "Takumi Minamino", pos: 'MO', age: 31, rating: 81, starter: true }, { name: "Maghnes Akliouche", pos: 'AIL', age: 24, rating: 84, starter: false }, { name: "Ansu Fati", pos: 'AIL', age: 24, rating: 79, starter: true }, { name: "Folarin Balogun", pos: 'BU', age: 25, rating: 81, starter: true }, { name: "Mika Biereth", pos: 'BU', age: 23, rating: 81, starter: false }, { name: "George Ilenikhena", pos: 'BU', age: 20, rating: 79, starter: true }, { name: "Kassoum Ouattara", pos: 'DL', age: 22, rating: 77, starter: false }, { name: "Jordan Teze", pos: 'DL', age: 27, rating: 79, starter: false }, { name: "Aladji Bamba", pos: 'MC', age: 20, rating: 76, starter: false }, { name: "Yann Lienard", pos: 'G', age: 23, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'losc', tmId: 1082, name: "LOSC Lille", short: 'LOSC', primary: '#E01E26', secondary: '#1B2848',
+        players: [
+          { name: "Berke \u00d6zer", pos: 'G', age: 26, rating: 80, starter: true }, { name: "Arnaud Bodart", pos: 'G', age: 28, rating: 76, starter: false }, { name: "Alexsandro", pos: 'DC', age: 27, rating: 82, starter: true }, { name: "A\u00efssa Mandi", pos: 'DC', age: 35, rating: 78, starter: true }, { name: "Nathan Ngoy", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Tiago Santos", pos: 'DL', age: 24, rating: 81, starter: false }, { name: "Romain Perraud", pos: 'DL', age: 29, rating: 79, starter: true }, { name: "Benjamin Andr\u00e9", pos: 'MC', age: 36, rating: 80, starter: true }, { name: "Ayyoub Bouaddi", pos: 'MC', age: 19, rating: 81, starter: true }, { name: "Nabil Bentaleb", pos: 'MC', age: 31, rating: 79, starter: true }, { name: "H\u00e1kon Arnar Haraldsson", pos: 'MO', age: 23, rating: 81, starter: false }, { name: "Ethan Mbapp\u00e9", pos: 'MC', age: 19, rating: 77, starter: false }, { name: "Osame Sahraoui", pos: 'AIL', age: 25, rating: 79, starter: true }, { name: "F\u00e9lix Correia", pos: 'AIL', age: 25, rating: 78, starter: false }, { name: "Mat\u00edas Fern\u00e1ndez-Pardo", pos: 'AIL', age: 21, rating: 80, starter: true }, { name: "Olivier Giroud", pos: 'BU', age: 40, rating: 78, starter: true }, { name: "Hamza Igamane", pos: 'BU', age: 24, rating: 80, starter: false }, { name: "Thomas Meunier", pos: 'DL', age: 35, rating: 77, starter: true }, { name: "Calvin Verdonk", pos: 'DL', age: 29, rating: 78, starter: false }, { name: "Ngal'ayel Mukau", pos: 'MC', age: 22, rating: 78, starter: false }, { name: "Marius Broholm", pos: 'AIL', age: 21, rating: 77, starter: false }, { name: "Marc-Aur\u00e8le Caillard", pos: 'G', age: 32, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'ol', tmId: 1041, name: "Olympique Lyonnais", short: 'OL', primary: '#00428C', secondary: '#DA291C',
+        players: [
+          { name: "Dominik Greif", pos: 'G', age: 29, rating: 80, starter: true }, { name: "R\u00e9my Descamps", pos: 'G', age: 30, rating: 76, starter: false }, { name: "Moussa Niakhat\u00e9", pos: 'DC', age: 30, rating: 81, starter: true }, { name: "Clinton Mata", pos: 'DC', age: 34, rating: 79, starter: true }, { name: "Ruben Kluivert", pos: 'DC', age: 25, rating: 77, starter: false }, { name: "Ainsley Maitland-Niles", pos: 'DL', age: 29, rating: 80, starter: false }, { name: "Nicol\u00e1s Tagliafico", pos: 'DL', age: 34, rating: 80, starter: true }, { name: "Corentin Tolisso", pos: 'MC', age: 32, rating: 82, starter: true }, { name: "Tyler Morton", pos: 'MC', age: 24, rating: 80, starter: true }, { name: "Tanner Tessmann", pos: 'MC', age: 25, rating: 79, starter: true }, { name: "Khalis Merah", pos: 'MO', age: 19, rating: 77, starter: false }, { name: "Malick Fofana", pos: 'AIL', age: 21, rating: 83, starter: false }, { name: "Afonso Moreira", pos: 'AIL', age: 21, rating: 78, starter: true }, { name: "Ernest Nuamah", pos: 'AIL', age: 23, rating: 80, starter: false }, { name: "Pavel \u0160ulc", pos: 'MO', age: 25, rating: 80, starter: true }, { name: "Mart\u00edn Satriano", pos: 'BU', age: 25, rating: 78, starter: true }, { name: "Rachid Ghezzal", pos: 'AIL', age: 34, rating: 76, starter: false }, { name: "Abner", pos: 'DL', age: 26, rating: 78, starter: true }, { name: "Orel Mangala", pos: 'MC', age: 28, rating: 80, starter: false }, { name: "Hans Hateboer", pos: 'DL', age: 32, rating: 77, starter: false }, { name: "Alejandro Gomes Rodr\u00edguez", pos: 'BU', age: 18, rating: 75, starter: false }, { name: "Lassine Diarra", pos: 'G', age: 24, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'rcl', tmId: 826, name: "RC Lens", short: 'RCL', primary: '#EC1C24', secondary: '#FFDE00',
+        players: [
+          { name: "Robin Risser", pos: 'G', age: 21, rating: 78, starter: true }, { name: "R\u00e9gis Gurtner", pos: 'G', age: 39, rating: 75, starter: false }, { name: "Samson Baidoo", pos: 'DC', age: 22, rating: 80, starter: true }, { name: "Malang Sarr", pos: 'DC', age: 27, rating: 78, starter: true }, { name: "Jonathan Gradit", pos: 'DC', age: 34, rating: 78, starter: false }, { name: "Ruben Aguilar", pos: 'DL', age: 33, rating: 78, starter: false }, { name: "Matthieu Udol", pos: 'DL', age: 30, rating: 78, starter: true }, { name: "Adrien Thomasson", pos: 'MC', age: 32, rating: 79, starter: true }, { name: "Mamadou Sangar\u00e9", pos: 'MC', age: 24, rating: 79, starter: true }, { name: "Hamzat Ojediran", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Florian Thauvin", pos: 'MO', age: 33, rating: 80, starter: false }, { name: "Morgan Guilavogui", pos: 'AIL', age: 28, rating: 78, starter: false }, { name: "Wesley Sa\u00efd", pos: 'AIL', age: 31, rating: 78, starter: true }, { name: "Odsonne \u00c9douard", pos: 'BU', age: 28, rating: 79, starter: false }, { name: "Rayan Fofana", pos: 'BU', age: 20, rating: 76, starter: true }, { name: "Saud Abdulhamid", pos: 'DL', age: 27, rating: 78, starter: true }, { name: "Deiver Machado", pos: 'DL', age: 33, rating: 77, starter: false }, { name: "Fod\u00e9 Sylla", pos: 'MC', age: 20, rating: 76, starter: true }, { name: "Abdallah Sima", pos: 'BU', age: 25, rating: 79, starter: false }, { name: "Anthony Bermont", pos: 'AIL', age: 21, rating: 75, starter: false }, { name: "Jhoanner Ch\u00e1vez", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "Ilan Jourdren", pos: 'G', age: 18, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'ogcn', tmId: 417, name: "OGC Nice", short: 'NIC', primary: '#CC0000', secondary: '#000000',
+        players: [
+          { name: "Yehvann Diouf", pos: 'G', age: 27, rating: 80, starter: true }, { name: "Maxime Dup\u00e9", pos: 'G', age: 33, rating: 76, starter: false }, { name: "Dante", pos: 'DC', age: 43, rating: 76, starter: true }, { name: "Mo\u00efse Bombito", pos: 'DC', age: 26, rating: 80, starter: true }, { name: "Youssouf Ndayishimiye", pos: 'DC', age: 28, rating: 79, starter: false }, { name: "Jonathan Clauss", pos: 'DL', age: 34, rating: 80, starter: false }, { name: "Melvin Bard", pos: 'DL', age: 26, rating: 80, starter: true }, { name: "Hicham Boudaoui", pos: 'MC', age: 27, rating: 80, starter: true }, { name: "Charles Vanhoutte", pos: 'MC', age: 28, rating: 78, starter: true }, { name: "Morgan Sanson", pos: 'MC', age: 32, rating: 78, starter: true }, { name: "Sofiane Diop", pos: 'MO', age: 26, rating: 80, starter: false }, { name: "Mohamed-Ali Cho", pos: 'AIL', age: 22, rating: 79, starter: false }, { name: "J\u00e9r\u00e9mie Boga", pos: 'AIL', age: 29, rating: 80, starter: true }, { name: "Terem Moffi", pos: 'BU', age: 27, rating: 81, starter: false }, { name: "Kevin Carlos", pos: 'BU', age: 25, rating: 78, starter: true }, { name: "Ali Abdi", pos: 'DL', age: 32, rating: 77, starter: true }, { name: "Antoine Mendy", pos: 'DC', age: 22, rating: 77, starter: false }, { name: "Salis Abdul Samed", pos: 'MC', age: 26, rating: 77, starter: true }, { name: "Tom Louchet", pos: 'MC', age: 23, rating: 77, starter: false }, { name: "Tiago Gouveia", pos: 'AIL', age: 25, rating: 78, starter: false }, { name: "Kojo Peprah Oppong", pos: 'DC', age: 22, rating: 76, starter: false }, { name: "Bartosz \u017belazowski", pos: 'G', age: 21, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'srfc', tmId: 273, name: "Stade Rennais", short: 'REN', primary: '#E30613', secondary: '#000000',
+        players: [
+          { name: "Brice Samba", pos: 'G', age: 32, rating: 82, starter: true }, { name: "Gauthier Gallon", pos: 'G', age: 33, rating: 76, starter: false }, { name: "J\u00e9r\u00e9my Jacquet", pos: 'DC', age: 21, rating: 80, starter: true }, { name: "Lilian Brassier", pos: 'DC', age: 27, rating: 80, starter: true }, { name: "Anthony Rouault", pos: 'DC', age: 25, rating: 79, starter: false }, { name: "Przemys\u0142aw Frankowski", pos: 'DL', age: 31, rating: 79, starter: false }, { name: "Quentin Merlin", pos: 'DL', age: 24, rating: 80, starter: true }, { name: "Valentin Rongier", pos: 'MC', age: 31, rating: 80, starter: true }, { name: "Seko Fofana", pos: 'MC', age: 31, rating: 81, starter: true }, { name: "Mahdi Camara", pos: 'MC', age: 28, rating: 79, starter: true }, { name: "Ludovic Blas", pos: 'MO', age: 28, rating: 80, starter: false }, { name: "Mousa Al-Tamari", pos: 'AIL', age: 29, rating: 78, starter: false }, { name: "Est\u00e9ban Lepaul", pos: 'BU', age: 26, rating: 80, starter: true }, { name: "Breel Embolo", pos: 'BU', age: 29, rating: 81, starter: false }, { name: "Mohamed Kader Me\u00eft\u00e9", pos: 'BU', age: 19, rating: 77, starter: true }, { name: "Alidu Seidu", pos: 'DC', age: 26, rating: 79, starter: true }, { name: "Djaoui Ciss\u00e9", pos: 'MC', age: 22, rating: 78, starter: false }, { name: "Glen Kamara", pos: 'MC', age: 31, rating: 77, starter: true }, { name: "Nordan Mukiele", pos: 'AIL', age: 20, rating: 76, starter: false }, { name: "Mahamadou Nagida", pos: 'DL', age: 21, rating: 76, starter: false }, { name: "Abdelhamid Ait Boudlal", pos: 'DC', age: 20, rating: 75, starter: false }, { name: "Mathys Silistrie", pos: 'G', age: 21, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'rcs', tmId: 667, name: "RC Strasbourg", short: 'STR', primary: '#0071BC', secondary: '#FFFFFF',
+        players: [
+          { name: "Mike Penders", pos: 'G', age: 21, rating: 79, starter: true }, { name: "Karl-Johan Johnsson", pos: 'G', age: 36, rating: 74, starter: false }, { name: "Mamadou Sarr", pos: 'DC', age: 21, rating: 79, starter: true }, { name: "Lucas H\u00f8gsberg", pos: 'DC', age: 20, rating: 78, starter: true }, { name: "Andrew Omobamidele", pos: 'DC', age: 24, rating: 78, starter: false }, { name: "Gu\u00e9la Dou\u00e9", pos: 'DL', age: 24, rating: 80, starter: false }, { name: "Ben Chilwell", pos: 'DL', age: 29, rating: 80, starter: true }, { name: "Valent\u00edn Barco", pos: 'DL', age: 22, rating: 80, starter: true }, { name: "Samir El Mourabet", pos: 'MC', age: 21, rating: 77, starter: true }, { name: "Rafael Lu\u00eds", pos: 'MC', age: 21, rating: 77, starter: true }, { name: "Kendry P\u00e1ez", pos: 'MO', age: 19, rating: 80, starter: false }, { name: "Julio Enciso", pos: 'MO', age: 22, rating: 81, starter: false }, { name: "Diego Moreira", pos: 'AIL', age: 22, rating: 80, starter: true }, { name: "Martial Godo", pos: 'AIL', age: 23, rating: 77, starter: false }, { name: "Emanuel Emegha", pos: 'BU', age: 23, rating: 82, starter: true }, { name: "Joaqu\u00edn Panichelli", pos: 'BU', age: 24, rating: 79, starter: true }, { name: "Isma\u00ebl Doukour\u00e9", pos: 'DC', age: 23, rating: 79, starter: false }, { name: "Maxi Oyedele", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Abdoul Ouattara", pos: 'AIL', age: 21, rating: 76, starter: false }, { name: "Sebastian Nanasi", pos: 'MO', age: 24, rating: 80, starter: false }, { name: "David Datro Fofana", pos: 'BU', age: 23, rating: 78, starter: false }, { name: "Stefan Bajic", pos: 'G', age: 24, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'sb29', tmId: 3911, name: "Stade Brestois", short: 'BRE', primary: '#E2001A', secondary: '#FFFFFF',
+        players: [
+          { name: "Rados\u0142aw Majecki", pos: 'G', age: 27, rating: 78, starter: true }, { name: "Gr\u00e9goire Coudert", pos: 'G', age: 27, rating: 75, starter: false }, { name: "Brendan Chardonnet", pos: 'DC', age: 31, rating: 78, starter: true }, { name: "Souma\u00efla Coulibaly", pos: 'DC', age: 23, rating: 78, starter: true }, { name: "Junior Diaz", pos: 'DC', age: 23, rating: 77, starter: false }, { name: "Kenny Lala", pos: 'DL', age: 35, rating: 77, starter: false }, { name: "Bradley Locko", pos: 'DL', age: 24, rating: 80, starter: true }, { name: "Hugo Magnetti", pos: 'MC', age: 28, rating: 79, starter: true }, { name: "Joris Chotard", pos: 'MC', age: 25, rating: 79, starter: true }, { name: "Kamory Doumbia", pos: 'MO', age: 23, rating: 79, starter: true }, { name: "Romain Del Castillo", pos: 'AIL', age: 30, rating: 80, starter: false }, { name: "Mama Bald\u00e9", pos: 'AIL', age: 31, rating: 78, starter: false }, { name: "Ludovic Ajorque", pos: 'BU', age: 32, rating: 79, starter: true }, { name: "R\u00e9my Labeau-Lascary", pos: 'BU', age: 23, rating: 77, starter: false }, { name: "Path\u00e9 Mboup", pos: 'AIL', age: 23, rating: 76, starter: true }, { name: "Luck Zogb\u00e9", pos: 'DL', age: 21, rating: 76, starter: true }, { name: "Daouda Guindo", pos: 'DL', age: 24, rating: 76, starter: false }, { name: "Lucas Tousart", pos: 'MC', age: 29, rating: 77, starter: true }, { name: "Eric Junior Dina Ebimbe", pos: 'MC', age: 25, rating: 78, starter: false }, { name: "Julien Le Cardinal", pos: 'DC', age: 29, rating: 76, starter: false }, { name: "Justin Bourgault", pos: 'DL', age: 21, rating: 74, starter: false }, { name: "Noah Jauny", pos: 'G', age: 22, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'tfc', tmId: 415, name: "Toulouse FC", short: 'TFC', primary: '#5C2D91', secondary: '#FFFFFF',
+        players: [
+          { name: "Guillaume Restes", pos: 'G', age: 21, rating: 81, starter: true }, { name: "Kjetil Haug", pos: 'G', age: 28, rating: 74, starter: false }, { name: "Charlie Cresswell", pos: 'DC', age: 24, rating: 79, starter: true }, { name: "Mark McKenzie", pos: 'DC', age: 27, rating: 78, starter: true }, { name: "Rasmus Nicolaisen", pos: 'DC', age: 29, rating: 79, starter: false }, { name: "Djibril Sidib\u00e9", pos: 'DL', age: 34, rating: 76, starter: false }, { name: "Dayann Methalie", pos: 'DL', age: 20, rating: 76, starter: true }, { name: "Cristian C\u00e1sseres", pos: 'MC', age: 26, rating: 79, starter: true }, { name: "Abu Francis", pos: 'MC', age: 25, rating: 77, starter: true }, { name: "Mario Sauer", pos: 'MO', age: 22, rating: 77, starter: true }, { name: "Aron D\u00f8nnum", pos: 'AIL', age: 28, rating: 78, starter: false }, { name: "Yann Gboho", pos: 'AIL', age: 25, rating: 80, starter: false }, { name: "Frank Magri", pos: 'BU', age: 27, rating: 78, starter: true }, { name: "Emersonn", pos: 'BU', age: 22, rating: 77, starter: false }, { name: "Santiago Hidalgo", pos: 'BU', age: 21, rating: 77, starter: true }, { name: "Warren Kamanzi", pos: 'DL', age: 26, rating: 77, starter: true }, { name: "Rafik Messali", pos: 'DL', age: 23, rating: 76, starter: false }, { name: "Alexis Vossah", pos: 'MC', age: 18, rating: 75, starter: true }, { name: "Niklas Schmidt", pos: 'MC', age: 28, rating: 76, starter: false }, { name: "Noah Edjouma", pos: 'AIL', age: 21, rating: 76, starter: false }, { name: "Juli\u00e1n Vignolo", pos: 'BU', age: 19, rating: 75, starter: false }, { name: "\u00c1lex Dom\u00ednguez", pos: 'G', age: 28, rating: 74, starter: false }
+        ]
+      },
+      {
+        id: 'aja', tmId: 290, name: "AJ Auxerre", short: 'AJA', primary: '#0062AC', secondary: '#FFFFFF',
+        players: [
+          { name: "Donovan L\u00e9on", pos: 'G', age: 34, rating: 77, starter: true }, { name: "Th\u00e9o De Percin", pos: 'G', age: 25, rating: 74, starter: false }, { name: "Sinaly Diomand\u00e9", pos: 'DC', age: 25, rating: 78, starter: true }, { name: "Cl\u00e9ment Akpa", pos: 'DC', age: 24, rating: 77, starter: true }, { name: "Francisco Sierralta", pos: 'DC', age: 29, rating: 77, starter: false }, { name: "Marvin Senaya", pos: 'DL', age: 25, rating: 77, starter: false }, { name: "Gideon Mensah", pos: 'DL', age: 28, rating: 77, starter: true }, { name: "Elisha Owusu", pos: 'MC', age: 29, rating: 78, starter: true }, { name: "K\u00e9vin Danois", pos: 'MC', age: 22, rating: 77, starter: true }, { name: "Oussama El Azzouzi", pos: 'MC', age: 25, rating: 78, starter: true }, { name: "Rudy Matondo", pos: 'MC', age: 18, rating: 76, starter: false }, { name: "Lassine Sinayoko", pos: 'AIL', age: 26, rating: 79, starter: false }, { name: "Josu\u00e9 Casimir", pos: 'AIL', age: 25, rating: 77, starter: true }, { name: "Danny Namaso", pos: 'BU', age: 26, rating: 78, starter: false }, { name: "S\u00e9kou Mara", pos: 'BU', age: 24, rating: 77, starter: true }, { name: "Ibrahim Osman", pos: 'AIL', age: 21, rating: 78, starter: true }, { name: "Fredrik Oppeg\u00e5rd", pos: 'DL', age: 24, rating: 76, starter: false }, { name: "Telli Siwe", pos: 'DC', age: 21, rating: 75, starter: true }, { name: "Lasso Coulibaly", pos: 'AIL', age: 24, rating: 76, starter: false }, { name: "Ryan Rodin", pos: 'BU', age: 20, rating: 74, starter: false }, { name: "Romain Faivre", pos: 'MO', age: 28, rating: 78, starter: false }, { name: "Tom Negrel", pos: 'G', age: 23, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'sco', tmId: 1420, name: "Angers SCO", short: 'SCO', primary: '#000000', secondary: '#FFFFFF',
+        players: [
+          { name: "Herv\u00e9 Koffi", pos: 'G', age: 30, rating: 77, starter: true }, { name: "Melvin Zinga", pos: 'G', age: 24, rating: 74, starter: false }, { name: "Ousmane Camara", pos: 'DC', age: 23, rating: 77, starter: true }, { name: "Jordan Lefort", pos: 'DC', age: 33, rating: 76, starter: true }, { name: "Abdoulaye Bamba", pos: 'DC', age: 36, rating: 74, starter: false }, { name: "Carlens Arcus", pos: 'DL', age: 30, rating: 76, starter: false }, { name: "Jacques Ekomi\u00e9", pos: 'DL', age: 23, rating: 76, starter: true }, { name: "Haris Belkebla", pos: 'MC', age: 32, rating: 77, starter: true }, { name: "Himad Abdelli", pos: 'MO', age: 27, rating: 80, starter: true }, { name: "Yassin Belkhdim", pos: 'MC', age: 24, rating: 76, starter: true }, { name: "Louis Mouton", pos: 'MC', age: 24, rating: 76, starter: false }, { name: "Lilian Raolisoa", pos: 'AIL', age: 26, rating: 76, starter: false }, { name: "Amine Sba\u00ef", pos: 'AIL', age: 26, rating: 76, starter: true }, { name: "Sidiki Ch\u00e9rif", pos: 'BU', age: 19, rating: 76, starter: false }, { name: "Prosper Peter", pos: 'BU', age: 19, rating: 75, starter: true }, { name: "Florent Hanin", pos: 'DL', age: 36, rating: 74, starter: true }, { name: "Emmanuel Biumla", pos: 'DC', age: 21, rating: 76, starter: false }, { name: "Pierrick Capelle", pos: 'MC', age: 39, rating: 73, starter: true }, { name: "Jim Allevinah", pos: 'AIL', age: 31, rating: 76, starter: false }, { name: "Lanroy Machine", pos: 'BU', age: 21, rating: 74, starter: false }, { name: "Marius Courcoul", pos: 'MC', age: 19, rating: 74, starter: false }, { name: "Oumar Pona", pos: 'G', age: 20, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'hac', tmId: 738, name: "Le Havre AC", short: 'HAC', primary: '#6CC2E9', secondary: '#002B5C',
+        players: [
+          { name: "Mory Diaw", pos: 'G', age: 33, rating: 77, starter: true }, { name: "Lionel Mpasi", pos: 'G', age: 32, rating: 75, starter: false }, { name: "Arouna Sangante", pos: 'DC', age: 24, rating: 79, starter: true }, { name: "Gautier Lloris", pos: 'DC', age: 31, rating: 77, starter: true }, { name: "\u00c9tienne Yout\u00e9 Kinkou\u00e9", pos: 'DC', age: 24, rating: 78, starter: false }, { name: "Lo\u00efc Nego", pos: 'DL', age: 35, rating: 75, starter: false }, { name: "Yanis Zouaoui", pos: 'DL', age: 28, rating: 76, starter: true }, { name: "Abdoulaye Tour\u00e9", pos: 'MC', age: 32, rating: 78, starter: true }, { name: "Rassoul Ndiaye", pos: 'MC', age: 24, rating: 77, starter: true }, { name: "Yassine Kechta", pos: 'MC', age: 24, rating: 78, starter: true }, { name: "Ayumu Seko", pos: 'MC', age: 26, rating: 77, starter: false }, { name: "Issa Soumar\u00e9", pos: 'AIL', age: 26, rating: 77, starter: false }, { name: "Fod\u00e9 Doucour\u00e9", pos: 'DL', age: 25, rating: 76, starter: true }, { name: "Mbwana Samatta", pos: 'BU', age: 33, rating: 76, starter: false }, { name: "Damian Pizarro", pos: 'BU', age: 21, rating: 77, starter: true }, { name: "Thomas Delaine", pos: 'DL', age: 34, rating: 75, starter: true }, { name: "Stephan Zagadou", pos: 'DC', age: 18, rating: 74, starter: false }, { name: "Simon Ebonog", pos: 'MC', age: 22, rating: 75, starter: true }, { name: "Daren Mosengo", pos: 'MC', age: 20, rating: 74, starter: false }, { name: "Godson Kyeremeh", pos: 'AIL', age: 26, rating: 76, starter: false }, { name: "Kenny Quetant", pos: 'BU', age: 20, rating: 74, starter: false }, { name: "Paul Argney", pos: 'G', age: 20, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'fcl', tmId: 1158, name: "FC Lorient", short: 'FCL', primary: '#F36F21', secondary: '#000000',
+        players: [
+          { name: "Yvon Mvogo", pos: 'G', age: 32, rating: 78, starter: true }, { name: "Bingourou Kamara", pos: 'G', age: 30, rating: 75, starter: false }, { name: "Montassar Talbi", pos: 'DC', age: 28, rating: 79, starter: true }, { name: "Bamo Me\u00eft\u00e9", pos: 'DC', age: 24, rating: 78, starter: true }, { name: "Isaak Tour\u00e9", pos: 'DC', age: 23, rating: 78, starter: false }, { name: "Th\u00e9o Le Bris", pos: 'DL', age: 24, rating: 77, starter: false }, { name: "Darlin Yongwa", pos: 'DL', age: 26, rating: 77, starter: true }, { name: "Laurent Abergel", pos: 'MC', age: 33, rating: 78, starter: true }, { name: "Arthur Avom", pos: 'MC', age: 21, rating: 78, starter: true }, { name: "Noah Cadiou", pos: 'MC', age: 27, rating: 76, starter: true }, { name: "Jean-Victor Makengo", pos: 'MC', age: 28, rating: 77, starter: false }, { name: "Pablo Pagis", pos: 'MO', age: 23, rating: 77, starter: false }, { name: "Aiyegun Tosin", pos: 'AIL', age: 28, rating: 77, starter: true }, { name: "Sambou Soumano", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "Mohamed Bamba", pos: 'BU', age: 24, rating: 78, starter: true }, { name: "Panos Katseris", pos: 'DL', age: 25, rating: 77, starter: true }, { name: "Igor Silva", pos: 'DL', age: 30, rating: 76, starter: false }, { name: "Abdoulaye Faye", pos: 'DC', age: 22, rating: 76, starter: true }, { name: "Bamba Dieng", pos: 'BU', age: 26, rating: 77, starter: false }, { name: "Trevan Sanusi", pos: 'AIL', age: 19, rating: 76, starter: false }, { name: "Dermane Karim", pos: 'MC', age: 22, rating: 77, starter: false }, { name: "Benjamin Leroy", pos: 'G', age: 37, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'pfc', tmId: 10004, name: "Paris FC", short: 'PFC', primary: '#1A3A70', secondary: '#FFFFFF',
+        players: [
+          { name: "Kevin Trapp", pos: 'G', age: 36, rating: 79, starter: true }, { name: "Obed Nkambadio", pos: 'G', age: 23, rating: 77, starter: false }, { name: "Ot\u00e1vio", pos: 'DC', age: 24, rating: 78, starter: true }, { name: "Moustapha Mbow", pos: 'DC', age: 26, rating: 77, starter: true }, { name: "Timoth\u00e9e Kolodziejczak", pos: 'DC', age: 35, rating: 75, starter: false }, { name: "Hamari Traor\u00e9", pos: 'DL', age: 34, rating: 77, starter: false }, { name: "Thibault De Smet", pos: 'DL', age: 28, rating: 77, starter: true }, { name: "Pierre Lees-Melou", pos: 'MC', age: 33, rating: 79, starter: true }, { name: "Maxime Lopez", pos: 'MC', age: 28, rating: 79, starter: true }, { name: "Vincent Marchetti", pos: 'MC', age: 29, rating: 77, starter: true }, { name: "Ilan Kebbal", pos: 'MO', age: 28, rating: 80, starter: false }, { name: "Moses Simon", pos: 'AIL', age: 31, rating: 80, starter: false }, { name: "Jonathan Ikon\u00e9", pos: 'AIL', age: 28, rating: 78, starter: true }, { name: "Willem Geubbels", pos: 'BU', age: 25, rating: 78, starter: false }, { name: "Jean-Philippe Krasso", pos: 'BU', age: 29, rating: 78, starter: true }, { name: "Samir Chergui", pos: 'DC', age: 27, rating: 76, starter: true }, { name: "Nhoa Sangui", pos: 'DL', age: 20, rating: 76, starter: false }, { name: "Adama Camara", pos: 'MC', age: 30, rating: 76, starter: true }, { name: "Julien Lopez", pos: 'MO', age: 34, rating: 75, starter: false }, { name: "Lamine Gueye", pos: 'AIL', age: 28, rating: 76, starter: false }, { name: "Andy Pemb\u00e9l\u00e9", pos: 'BU', age: 26, rating: 75, starter: false }, { name: "R\u00e9my Riou", pos: 'G', age: 39, rating: 73, starter: false }
+        ]
+      },
+      {
+        id: 'est', tmId: 1095, name: "ESTAC Troyes", short: 'EST', primary: '#0055A4', secondary: '#FFFFFF',
+        players: [
+          { name: "Nicolas Lema\u00eetre", pos: 'G', age: 29, rating: 76, starter: true }, { name: "Zacharie Boucher", pos: 'G', age: 34, rating: 74, starter: false }, { name: "Hugo Gambor", pos: 'DC', age: 23, rating: 76, starter: true }, { name: "Adrien Monfray", pos: 'DC', age: 35, rating: 74, starter: true }, { name: "Paolo Gozzi", pos: 'DC', age: 25, rating: 76, starter: false }, { name: "Lucas Maronnier", pos: 'DL', age: 26, rating: 75, starter: false }, { name: "Isma\u00ebl Boura", pos: 'DL', age: 26, rating: 76, starter: true }, { name: "Xavier Chavalerin", pos: 'MC', age: 35, rating: 75, starter: true }, { name: "Mouhamed Diop", pos: 'MC', age: 26, rating: 76, starter: true }, { name: "Martin Adeline", pos: 'MC', age: 22, rating: 76, starter: true }, { name: "Merwan Ifnaoui", pos: 'MO', age: 28, rating: 76, starter: false }, { name: "Renaud Ripart", pos: 'AIL', age: 33, rating: 75, starter: false }, { name: "Mathys Detourbet", pos: 'AIL', age: 19, rating: 76, starter: true }, { name: "Tawfik Bentayeb", pos: 'BU', age: 24, rating: 77, starter: false }, { name: "Kandet Diawara", pos: 'BU', age: 26, rating: 75, starter: true }, { name: "Mehdi Tahrat", pos: 'DC', age: 36, rating: 74, starter: true }, { name: "Thierno Bald\u00e9", pos: 'DL', age: 24, rating: 76, starter: false }, { name: "Antoine Mille", pos: 'MC', age: 29, rating: 75, starter: true }, { name: "Alexandre Phliponeau", pos: 'MC', age: 26, rating: 75, starter: false }, { name: "Jaur\u00e8s Assoumou", pos: 'AIL', age: 24, rating: 75, starter: false }, { name: "Ibrahim Traor\u00e9", pos: 'BU', age: 21, rating: 74, starter: false }, { name: "Hillel Konat\u00e9", pos: 'G', age: 31, rating: 72, starter: false }
+        ]
+      },
+      {
+        id: 'lem', tmId: 994, name: "Le Mans FC", short: 'LEM', primary: '#D50032', secondary: '#F7B500',
+        players: [
+          { name: "Nicolas Kocik", pos: 'G', age: 28, rating: 75, starter: true }, { name: "Ewan Hatfout", pos: 'G', age: 26, rating: 73, starter: false }, { name: "Harold Voyer", pos: 'DC', age: 29, rating: 75, starter: true }, { name: "Th\u00e9o Eyoum", pos: 'DC', age: 24, rating: 75, starter: true }, { name: "Samuel Yohou", pos: 'DC', age: 35, rating: 74, starter: false }, { name: "Lucas Buades", pos: 'DL', age: 28, rating: 75, starter: false }, { name: "Anthony Ribelin", pos: 'DL', age: 30, rating: 75, starter: true }, { name: "Edwin Quarshie", pos: 'MC', age: 31, rating: 75, starter: true }, { name: "Alexandre Lauray", pos: 'MC', age: 29, rating: 75, starter: true }, { name: "Martin Rossignol", pos: 'MC', age: 23, rating: 75, starter: true }, { name: "Gabin Bernardeau", pos: 'MO', age: 20, rating: 76, starter: false }, { name: "Dame Gueye", pos: 'AIL', age: 31, rating: 75, starter: false }, { name: "Antoine Rabillard", pos: 'AIL', age: 31, rating: 75, starter: true }, { name: "Arnold Vula", pos: 'BU', age: 27, rating: 76, starter: false }, { name: "William Harhouz", pos: 'BU', age: 26, rating: 75, starter: true }, { name: "Isaac Cossier", pos: 'DC', age: 19, rating: 74, starter: true }, { name: "Milan Robin", pos: 'MC', age: 27, rating: 74, starter: false }, { name: "Malang Gomes", pos: 'MC', age: 21, rating: 74, starter: true }, { name: "Jean Vercruysse", pos: 'MO', age: 26, rating: 75, starter: false }, { name: "Baptiste Guillaume", pos: 'BU', age: 31, rating: 75, starter: false }, { name: "Lucas Calodat", pos: 'DL', age: 24, rating: 74, starter: false }, { name: "Augustin Delbecque", pos: 'G', age: 24, rating: 72, starter: false }
+        ]
+      }
+    ]
+    };
+
+    const EXTRA_PROMO_POOLS = {
+      laliga: [
+        { id: 'gir', tmId: 12321, name: 'Girona FC', short: 'GIR', primary: '#CD2534', secondary: '#FFFFFF' },
+        { id: 'mll', tmId: 237, name: 'RCD Mallorca', short: 'MLL', primary: '#E20613', secondary: '#000000' },
+        { id: 'ovi', tmId: 2497, name: 'Real Oviedo', short: 'OVI', primary: '#0055A4', secondary: '#FFFFFF' },
+        { id: 'alm', tmId: 3302, name: 'UD Almería', short: 'ALM', primary: '#E20613', secondary: '#FFFFFF' }
+      ],
+      seriea: [
+        { id: 'ver', tmId: 276, name: 'Hellas Verona', short: 'VER', primary: '#003090', secondary: '#FFDD00' },
+        { id: 'cre', tmId: 2239, name: 'US Cremonese', short: 'CRE', primary: '#C8102E', secondary: '#808080' },
+        { id: 'pis', tmId: 4172, name: 'Pisa SC', short: 'PIS', primary: '#004B93', secondary: '#000000' },
+        { id: 'pal', tmId: 458, name: 'Palermo FC', short: 'PAL', primary: '#F39CC3', secondary: '#000000' }
+      ],
+      bundesliga: [
+        { id: 'wob', tmId: 82, name: 'VfL Wolfsburg', short: 'WOB', primary: '#65B32E', secondary: '#FFFFFF' },
+        { id: 'hdh', tmId: 2036, name: '1. FC Heidenheim', short: 'HDH', primary: '#E2001A', secondary: '#003A70' },
+        { id: 'stp', tmId: 35, name: 'FC St. Pauli', short: 'STP', primary: '#624A37', secondary: '#FFFFFF' },
+        { id: 'bsc', tmId: 44, name: 'Hertha BSC', short: 'BSC', primary: '#005CA9', secondary: '#FFFFFF' }
+      ],
+      ligue1: [
+        { id: 'fcn', tmId: 995, name: 'FC Nantes', short: 'FCN', primary: '#FDE100', secondary: '#008A45' },
+        { id: 'fcm', tmId: 347, name: 'FC Metz', short: 'FCM', primary: '#7A1C24', secondary: '#FFFFFF' },
+        { id: 'asse', tmId: 618, name: 'AS Saint-Étienne', short: 'ASSE', primary: '#008A45', secondary: '#FFFFFF' },
+        { id: 'sdr', tmId: 1421, name: 'Stade de Reims', short: 'SDR', primary: '#D91A21', secondary: '#FFFFFF' }
+      ]
+    };
+
+    function getActiveLeagueConfig() {
+      return LEAGUES_CONFIG[state.activeLeagueId] || LEAGUES_CONFIG.pl;
+    }
+
+    function getLeagueTotalMd() {
+      return (state.schedule && state.schedule.length) ? state.schedule.length : ((getActiveLeagueConfig().teamCount - 1) * 2);
+    }
+
+    function getLeagueMatchesPerMd() {
+      return (state.schedule && state.schedule[0]) ? state.schedule[0].length : Math.floor(getActiveLeagueConfig().teamCount / 2);
+    }
+
+    function switchLeague(newLeagueId) {
+      if (!LEAGUES_CONFIG[newLeagueId] || newLeagueId === state.activeLeagueId) return;
+      stopLiveMatchLoop();
+      if (!state.savedLeagues) state.savedLeagues = {};
+      const keysToSave = ['seasonYear','currentMatchday','standingsFilter','selectedSquadClubId','managedClubId','selectedMatchId','clubs','schedule','palmares','preSeasonWeek','winterPauseWeekDone','postSeasonWeek','lastMercatoPhaseSeen','transfersLog','lastBatchTransfers','externalPool','faCup','freeAgents','records','championshipPool'];
+      const snapshot = {};
+      keysToSave.forEach(k => { snapshot[k] = state[k]; });
+      state.savedLeagues[state.activeLeagueId] = snapshot;
+
+      state.activeLeagueId = newLeagueId;
+      const saved = state.savedLeagues[newLeagueId];
+      if (saved && Array.isArray(saved.clubs) && saved.clubs.length >= 18) {
+        keysToSave.forEach(k => { state[k] = saved[k]; });
+      } else {
+        state.managedClubId = null;
+        state.freeAgents = [];
+        state.championshipPool = [];
+        initFreshSeason(true);
+        state.selectedSquadClubId = state.clubs[0].id;
+      }
+      saveState();
+      refreshAllViews();
+      if (state.selectedMatchId) loadMatchIntoLivePanel(state.selectedMatchId, false);
+      showToast(`Championnat chargé : ${getActiveLeagueConfig().name} 2026/27 !`);
     }
 
     // ==================== BOOTSTRAP ====================
@@ -5973,4 +6567,3 @@
   </script>
 </body>
 </html>
-```
